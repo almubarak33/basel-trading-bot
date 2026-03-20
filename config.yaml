@@ -1,24 +1,14 @@
-enabled: true
-emergency_close_all: false
-
-exchange: okx
+exchange: "okx"
 
 timeframe: "15m"
 loop_seconds: 30
-risk_per_trade_usd: 15
 
-max_positions: 2
 risk_per_trade_usd: 15
-daily_loss_limit_usd: 50
+max_positions: 3
 
 leverage: 3
 
-symbols_scan: 15
+use_all_symbols: true
 
-strategy:
-  ema_fast: 20
-  ema_slow: 50
-  ema_trend: 200
-  rsi_length: 14
-  atr_length: 14
-  rr: 1.5
+filters:
+  min_volume: 1000000   # سيولة عالية فقط
