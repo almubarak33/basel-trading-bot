@@ -1,8 +1,15 @@
 enabled: true
+
 timeframe: "15m"
-loop_seconds: 30
+loop_seconds: 20
 
-risk_per_trade_usd: 25
-max_positions: 2
+max_positions: 3
 
+risk_per_trade: 20
 leverage: 3
+
+tp_percent: 1.5
+sl_percent: 1.0
+
+filters:
+  min_volume: 10000000
