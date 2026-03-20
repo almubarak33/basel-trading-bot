@@ -1,10 +1,10 @@
 import os
 import time
-import math
 import yaml
 import ccxt
 
-with open("config.yaml", "r", encoding="utf-8") as f:
+# تحميل الإعدادات
+with open("config.yaml") as f:
     config = yaml.safe_load(f)
 
 exchange = ccxt.okx({
@@ -12,119 +12,128 @@ exchange = ccxt.okx({
     "secret": os.getenv("OKX_SECRET"),
     "password": os.getenv("OKX_PASSPHRASE"),
     "enableRateLimit": True,
-    "options": {
-        "defaultType": "swap",
-    },
+    "options": {"defaultType": "swap"},
 })
 
-symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT"]
+timeframe = config["timeframe"]
+loop_seconds = config["loop_seconds"]
+risk_usd = config["risk_per_trade_usd"]
+max_positions = config["max_positions"]
 
-timeframe = config.get("timeframe", "15m")
-loop_seconds = int(config.get("loop_seconds", 30))
-risk_per_trade_usd = float(config.get("risk_per_trade_usd", 15))
+open_positions = set()
 
+# -----------------------------
+# جلب جميع العملات القوية
+# -----------------------------
+def get_symbols():
+    markets = exchange.load_markets()
+    symbols = []
 
-def sma(values, length):
-    if len(values) < length:
-        return None
-    return sum(values[-length:]) / length
+    for s in markets:
+        m = markets[s]
 
+        if (
+            m["active"]
+            and m["swap"]
+            and m["quote"] == "USDT"
+        ):
+            try:
+                ticker = exchange.fetch_ticker(s)
+                volume = ticker.get("quoteVolume", 0)
 
-def get_signal(data):
-    closes = [c[4] for c in data]
+                if volume and volume > config["filters"]["min_volume"]:
+                    symbols.append(s)
+
+            except:
+                pass
+
+    return symbols
+
+# -----------------------------
+# إشارة التداول (احترافية)
+# -----------------------------
+def get_signal(ohlcv):
+    closes = [c[4] for c in ohlcv]
+
     if len(closes) < 50:
         return None
 
-    ma20 = sma(closes, 20)
-    if ma20 is None:
-        return None
+    ma20 = sum(closes[-20:]) / 20
+    ma50 = sum(closes[-50:]) / 50
 
     last = closes[-1]
-    prev = closes[-2]
 
-    if prev <= ma20 and last > ma20:
+    # ترند + زخم
+    if last > ma20 and ma20 > ma50:
         return "buy"
 
-    if prev >= ma20 and last < ma20:
+    if last < ma20 and ma20 < ma50:
         return "sell"
 
     return None
 
-
-def get_last_price(symbol):
+# -----------------------------
+# حساب الكمية
+# -----------------------------
+def get_amount(symbol):
     ticker = exchange.fetch_ticker(symbol)
-    return float(ticker["last"])
+    price = ticker["last"]
 
+    amount = risk_usd / price
+    amount = float(exchange.amount_to_precision(symbol, amount))
 
-def get_market_limits(symbol):
-    market = exchange.market(symbol)
-    limits = market.get("limits", {})
-    amount_limits = limits.get("amount", {}) or {}
-    min_amount = amount_limits.get("min") or 0.0
+    return amount
 
-    precision = market.get("precision", {}) or {}
-    amount_precision = precision.get("amount", None)
+# -----------------------------
+# تنفيذ الصفقة
+# -----------------------------
+def place_trade(symbol, side):
+    if symbol in open_positions:
+        return
 
-    return market, float(min_amount), amount_precision
+    if len(open_positions) >= max_positions:
+        return
 
+    try:
+        amount = get_amount(symbol)
 
-def calculate_contract_amount(symbol, usdt_amount):
-    price = get_last_price(symbol)
-    market, min_amount, _ = get_market_limits(symbol)
+        order = exchange.create_market_order(
+            symbol=symbol,
+            side=side,
+            amount=amount
+        )
 
-    raw_amount = usdt_amount / price
+        open_positions.add(symbol)
 
-    # استخدم precision الرسمية من المنصة
-    precise_amount_str = exchange.amount_to_precision(symbol, raw_amount)
-    precise_amount = float(precise_amount_str)
+        print(f"🔥 TRADE {side} {symbol}")
 
-    # إذا صار أقل من الحد الأدنى، ارفعه للحد الأدنى
-    if min_amount and precise_amount < min_amount:
-        precise_amount = min_amount
-        precise_amount = float(exchange.amount_to_precision(symbol, precise_amount))
+    except Exception as e:
+        print(f"ERROR {symbol}: {e}")
 
-    return precise_amount, price
-
-
-def place_market_order(symbol, side, usdt_amount):
-    amount, price = calculate_contract_amount(symbol, usdt_amount)
-
-    if amount <= 0:
-        raise Exception(f"invalid amount for {symbol}: {amount}")
-
-    print(f"Placing {side} on {symbol} | usdt={usdt_amount} | amount={amount} | price={price}", flush=True)
-
-    order = exchange.create_order(
-        symbol=symbol,
-        type="market",
-        side=side,
-        amount=amount,
-        params={}
-    )
-    return order
-
+# -----------------------------
+# التشغيل
+# -----------------------------
+symbols = get_symbols()
+print(f"Loaded {len(symbols)} symbols")
 
 while True:
     try:
-        print("Scanning...", flush=True)
+        print("Scanning...")
 
         for symbol in symbols:
             try:
                 ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=100)
+
                 signal = get_signal(ohlcv)
 
                 if signal:
-                    print(f"Signal {signal} on {symbol}", flush=True)
-                    order = place_market_order(symbol, signal, risk_per_trade_usd)
-                    print(f"ORDER EXECUTED: {order}", flush=True)
-                else:
-                    print(f"No signal on {symbol}", flush=True)
+                    place_trade(symbol, signal)
 
             except Exception as e:
-                print(f"ERROR on {symbol}: {e}", flush=True)
+                print(f"ERR {symbol}: {e}")
 
         time.sleep(loop_seconds)
 
     except Exception as e:
-        print(f"FATAL ERROR: {e}", flush=True)
+        print("FATAL:", e)
         time.sleep(5)
