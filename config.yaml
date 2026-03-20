@@ -1,7 +1,7 @@
 enabled: true
 
 timeframe: "15m"
-loop_seconds: 20
+loop_seconds: 25
 
 max_positions: 3
 
