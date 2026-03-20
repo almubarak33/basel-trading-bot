@@ -12,7 +12,7 @@ crypto_provider: binanceusdm
 mode: paper
 loop_seconds: 60
 risk_per_trade: 0.01
-max_positions: 5
+max_positions: 3
 starting_balance_usd: 10000
 
 telegram_token:
