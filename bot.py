@@ -3,7 +3,7 @@ import yaml
 import ccxt
 import traceback
 
-print("=== PAPER TRADING BOT LOADED ===")
+print("=== PAPER ENTRY VERSION ===")
 
 with open("config.yaml", "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
@@ -75,26 +75,24 @@ def check_exit(symbol, price):
         return
 
     pos = positions[symbol]
-    side = pos["side"]
     entry = pos["entry"]
     sl = pos["sl"]
     tp = pos["tp"]
     qty = pos["qty"]
 
-    if side == "long":
-        if price <= sl:
-            pnl = (sl - entry) * qty
-            balance += pnl
-            print(f"[PAPER EXIT][SL] {symbol} | Exit: {sl:.6f} | PnL: {pnl:.2f} | Balance: {balance:.2f}")
-            del positions[symbol]
-            return
+    if price <= sl:
+        pnl = (sl - entry) * qty
+        balance += pnl
+        print(f"[PAPER EXIT][SL] {symbol} | Exit: {sl:.6f} | PnL: {pnl:.2f} | Balance: {balance:.2f}")
+        del positions[symbol]
+        return
 
-        if price >= tp:
-            pnl = (tp - entry) * qty
-            balance += pnl
-            print(f"[PAPER EXIT][TP] {symbol} | Exit: {tp:.6f} | PnL: {pnl:.2f} | Balance: {balance:.2f}")
-            del positions[symbol]
-            return
+    if price >= tp:
+        pnl = (tp - entry) * qty
+        balance += pnl
+        print(f"[PAPER EXIT][TP] {symbol} | Exit: {tp:.6f} | PnL: {pnl:.2f} | Balance: {balance:.2f}")
+        del positions[symbol]
+        return
 
 while True:
     try:
@@ -119,11 +117,8 @@ while True:
 
             print(f"{symbol} price: {price}")
 
-            # أولاً: فحص خروج الصفقة إن وجدت
             check_exit(symbol, price)
 
-            # ثانيًا: دخول صفقة إذا ما فيه صفقة مفتوحة
-            # هذا دخول تجريبي مباشر حتى نشوف كيف يتصرف البوت
             if symbol not in positions and len(positions) < max_positions:
                 open_long(symbol, price)
 
