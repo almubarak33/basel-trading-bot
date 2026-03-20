@@ -3,18 +3,47 @@ import time
 import yaml
 import ccxt
 
+print("=== PRO BINANCE BOT STARTED ===", flush=True)
+
 with open("config.yaml") as f:
     config = yaml.safe_load(f)
 
-exchange = ccxt.okx({
-    "apiKey": os.getenv("OKX_API_KEY"),
-    "secret": os.getenv("OKX_SECRET"),
-    "password": os.getenv("OKX_PASSPHRASE"),
+exchange = ccxt.binance({
+    "apiKey": os.getenv("BINANCE_API_KEY"),
+    "secret": os.getenv("BINANCE_SECRET"),
     "enableRateLimit": True,
-    "options": {"defaultType": "swap"},
+    "options": {"defaultType": "future"}
 })
 
-symbols = ["BTC/USDT:USDT"]
+timeframe = config["timeframe"]
+loop_seconds = config["loop_seconds"]
+max_positions = config["max_positions"]
+
+positions = {}
+
+# =========================
+
+def get_symbols():
+    markets = exchange.load_markets()
+    symbols = []
+
+    for s, m in markets.items():
+        try:
+            if not m.get("contract", False):
+                continue
+            if m.get("quote") != "USDT":
+                continue
+
+            ticker = exchange.fetch_ticker(s)
+            vol = ticker.get("quoteVolume", 0)
+
+            if vol and vol > config["filters"]["min_volume"]:
+                symbols.append(s)
+        except:
+            pass
+
+    return symbols
+
 
 def get_signal(ohlcv):
     closes = [c[4] for c in ohlcv]
@@ -34,50 +63,121 @@ def get_signal(ohlcv):
     return None
 
 
-def calculate_contracts(symbol):
-    market = exchange.market(symbol)
+def calculate_amount(symbol):
+    risk = config["risk_per_trade"]
 
-    # 🔥 الحد الأدنى للعقود
-    min_contracts = market["limits"]["amount"]["min"] or 1
+    price = exchange.fetch_ticker(symbol)["last"]
 
-    # نخليه دائمًا رقم صحيح
-    contracts = max(1, int(min_contracts))
+    amount = risk / price
 
-    return contracts
+    return float(exchange.amount_to_precision(symbol, amount))
 
 
-def place_trade(symbol, side):
+def set_leverage(symbol):
     try:
-        contracts = calculate_contracts(symbol)
+        exchange.set_leverage(config["leverage"], symbol)
+    except:
+        pass
 
-        print(f"Placing {side} {symbol} contracts={contracts}")
+
+def open_trade(symbol, side):
+    if symbol in positions:
+        return
+
+    if len(positions) >= max_positions:
+        return
+
+    try:
+        set_leverage(symbol)
+
+        amount = calculate_amount(symbol)
 
         order = exchange.create_market_order(
             symbol=symbol,
             side=side,
-            amount=contracts
+            amount=amount
         )
 
-        print("DONE:", order)
+        price = exchange.fetch_ticker(symbol)["last"]
+
+        tp = price * (1 + config["tp_percent"]/100) if side == "buy" else price * (1 - config["tp_percent"]/100)
+        sl = price * (1 - config["sl_percent"]/100) if side == "buy" else price * (1 + config["sl_percent"]/100)
+
+        positions[symbol] = {
+            "side": side,
+            "entry": price,
+            "tp": tp,
+            "sl": sl,
+            "amount": amount
+        }
+
+        print(f"OPEN {side} {symbol} @ {price}", flush=True)
 
     except Exception as e:
-        print("ERROR:", e)
+        print("OPEN ERROR", symbol, e, flush=True)
 
+
+def check_close(symbol):
+    pos = positions[symbol]
+
+    price = exchange.fetch_ticker(symbol)["last"]
+
+    if pos["side"] == "buy":
+        if price >= pos["tp"] or price <= pos["sl"]:
+            close_trade(symbol)
+
+    if pos["side"] == "sell":
+        if price <= pos["tp"] or price >= pos["sl"]:
+            close_trade(symbol)
+
+
+def close_trade(symbol):
+    pos = positions[symbol]
+
+    try:
+        side = "sell" if pos["side"] == "buy" else "buy"
+
+        exchange.create_market_order(
+            symbol=symbol,
+            side=side,
+            amount=pos["amount"]
+        )
+
+        print(f"CLOSE {symbol}", flush=True)
+
+        del positions[symbol]
+
+    except Exception as e:
+        print("CLOSE ERROR", symbol, e, flush=True)
+
+
+# =========================
+
+symbols = get_symbols()
+print(f"Loaded {len(symbols)} symbols", flush=True)
 
 while True:
     try:
-        print("Scanning...")
+        print("Scanning...", flush=True)
 
+        # دخول
         for symbol in symbols:
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=config["timeframe"], limit=100)
+            try:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=100)
+                signal = get_signal(ohlcv)
 
-            signal = get_signal(ohlcv)
+                if signal:
+                    open_trade(symbol, signal)
 
-            if signal:
-                place_trade(symbol, signal)
+            except Exception as e:
+                print("ERR", symbol, e, flush=True)
 
-        time.sleep(config["loop_seconds"])
+        # خروج
+        for symbol in list(positions.keys()):
+            check_close(symbol)
+
+        time.sleep(loop_seconds)
 
     except Exception as e:
-        print("FATAL:", e)
+        print("FATAL", e, flush=True)
         time.sleep(5)
