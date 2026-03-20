@@ -12,20 +12,23 @@ crypto_provider: binanceusdm
 mode: paper
 loop_seconds: 60
 risk_per_trade: 0.01
-max_positions: 4
+max_positions: 5
 starting_balance_usd: 10000
+
+telegram_token:
+telegram_chat_id:
 
 crypto_provider: binanceusdm
 
 symbols:
   - symbol: "BTC/USDT:USDT"
     timeframe: "1h"
-    limit: 250
+    limit: 100
 
   - symbol: "ETH/USDT:USDT"
     timeframe: "1h"
-    limit: 250
+    limit: 100
 
   - symbol: "TRB/USDT:USDT"
     timeframe: "1h"
-    limit: 250
+    limit: 100
