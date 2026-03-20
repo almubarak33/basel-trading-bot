@@ -2,101 +2,88 @@ import time
 import yaml
 import ccxt
 
-print("=== BOT STARTED ===")
+print("=== FILE LOADED ===")
 
-# تحميل الإعدادات
 with open("config.yaml", "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
+mode = config.get("mode", "paper")
 loop_seconds = config.get("loop_seconds", 60)
 symbols_config = config.get("symbols", [])
-balance = float(config.get("starting_balance_usd", 10000))
+starting_balance = float(config.get("starting_balance_usd", 10000))
 risk_per_trade = float(config.get("risk_per_trade", 0.01))
+
+print(f"Bot started | mode={mode}")
+print(f"Loop seconds: {loop_seconds}")
+print(f"Symbols loaded: {symbols_config}")
 
 exchange = ccxt.binanceusdm({
     "enableRateLimit": True
 })
 
+balance = starting_balance
 positions = {}
 
 def fetch_data(symbol, timeframe, limit):
     try:
-        return exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        print(f"Fetching {symbol} | tf={timeframe} | limit={limit}")
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        print(f"Fetched candles for {symbol}: {len(ohlcv)}")
+        return ohlcv
     except Exception as e:
         print(f"[ERROR] {symbol}: {e}")
         return None
 
-def sma(data, length):
-    return sum(data[-length:]) / length
-
 while True:
-    print("\n============================")
+    print("\n===================================")
+    print("Bot running... checking market")
     print(f"Balance: {balance:.2f}")
-    print("============================")
+    print("===================================")
 
     for s in symbols_config:
         symbol = s["symbol"]
-        timeframe = s["timeframe"]
-        limit = s["limit"]
+        timeframe = s.get("timeframe", "1h")
+        limit = s.get("limit", 100)
 
-        print(f"\nChecking {symbol}")
+        print(f"Checking {symbol}")
 
         data = fetch_data(symbol, timeframe, limit)
         if not data:
+            print(f"Failed to fetch {symbol}")
             continue
 
         closes = [c[4] for c in data]
         price = closes[-1]
 
-        sma20 = sma(closes, 20)
-
         print(f"{symbol} price: {price}")
-        print(f"SMA20: {sma20}")
 
-        # ===== دخول صفقة =====
+        # إذا لا توجد صفقة مفتوحة على هذا الرمز، افتح صفقة تجريبية مباشرة
         if symbol not in positions:
+            entry = price
+            sl = price * 0.995
+            tp = price * 1.01
 
-            # LONG
-            if price > sma20:
-                entry = price
-                sl = price * 0.99
-                tp = price * 1.02
+            risk_amount = balance * risk_per_trade
+            stop_distance = entry - sl
 
-                risk_amount = balance * risk_per_trade
-                qty = risk_amount / (entry - sl)
+            if stop_distance <= 0:
+                print(f"[SKIP] Invalid stop distance for {symbol}")
+                continue
 
-                positions[symbol] = {
-                    "side": "long",
-                    "entry": entry,
-                    "sl": sl,
-                    "tp": tp,
-                    "qty": qty
-                }
+            qty = risk_amount / stop_distance
 
-                print(f"[ENTRY LONG] {symbol}")
-                print(f"Entry: {entry} | SL: {sl} | TP: {tp} | QTY: {qty}")
+            positions[symbol] = {
+                "side": "long",
+                "entry": entry,
+                "sl": sl,
+                "tp": tp,
+                "qty": qty
+            }
 
-            # SHORT
-            elif price < sma20:
-                entry = price
-                sl = price * 1.01
-                tp = price * 0.98
+            print(f"[FORCE ENTRY] {symbol}")
+            print(f"Entry: {entry} | SL: {sl} | TP: {tp} | QTY: {qty}")
 
-                risk_amount = balance * risk_per_trade
-                qty = risk_amount / (sl - entry)
-
-                positions[symbol] = {
-                    "side": "short",
-                    "entry": entry,
-                    "sl": sl,
-                    "tp": tp,
-                    "qty": qty
-                }
-
-                print(f"[ENTRY SHORT] {symbol}")
-                print(f"Entry: {entry} | SL: {sl} | TP: {tp} | QTY: {qty}")
-
-        # ===== إدارة الصفقة =====
+        # إدارة الصفقة المفتوحة
         else:
             pos = positions[symbol]
             side = pos["side"]
@@ -105,40 +92,28 @@ while True:
             tp = pos["tp"]
             qty = pos["qty"]
 
-            # LONG
             if side == "long":
                 if price <= sl:
                     pnl = (sl - entry) * qty
                     balance += pnl
-                    print(f"[STOP LOSS] {symbol} | PnL: {pnl}")
+                    print(f"[STOP LOSS] {symbol} | Exit: {sl} | PnL: {pnl:.2f} | Balance: {balance:.2f}")
                     del positions[symbol]
 
                 elif price >= tp:
                     pnl = (tp - entry) * qty
                     balance += pnl
-                    print(f"[TAKE PROFIT] {symbol} | PnL: {pnl}")
-                    del positions[symbol]
-
-            # SHORT
-            elif side == "short":
-                if price >= sl:
-                    pnl = (entry - sl) * qty
-                    balance += pnl
-                    print(f"[STOP LOSS] {symbol} | PnL: {pnl}")
-                    del positions[symbol]
-
-                elif price <= tp:
-                    pnl = (entry - tp) * qty
-                    balance += pnl
-                    print(f"[TAKE PROFIT] {symbol} | PnL: {pnl}")
+                    print(f"[TAKE PROFIT] {symbol} | Exit: {tp} | PnL: {pnl:.2f} | Balance: {balance:.2f}")
                     del positions[symbol]
 
     if positions:
         print("\nOpen Positions:")
         for sym, p in positions.items():
-            print(f"{sym} | {p['side']} | entry={p['entry']}")
+            print(
+                f"{sym} | {p['side']} | "
+                f"entry={p['entry']:.6f} | sl={p['sl']:.6f} | tp={p['tp']:.6f} | qty={p['qty']:.6f}"
+            )
     else:
         print("\nNo open positions")
 
-    print("\nSleeping...\n")
+    print(f"\nSleeping {loop_seconds} seconds...\n")
     time.sleep(loop_seconds)
