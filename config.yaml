@@ -2,7 +2,7 @@ enabled: true
 timeframe: "15m"
 loop_seconds: 30
 
-risk_per_trade_usd: 10
+risk_per_trade_usd: 25
 max_positions: 2
 
 leverage: 3
