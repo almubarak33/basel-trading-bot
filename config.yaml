@@ -1,19 +1,18 @@
 enabled: true
 emergency_close_all: false
 
-scan_top_n: 20
-timeframe: "15m"
-ohlcv_limit: 250
-loop_seconds: 45
+exchange: okx
 
-max_positions: 3
-risk_per_trade_usd: 20
-daily_loss_limit_usd: 100
-min_quote_volume_usd: 5000000
-cooldown_minutes: 20
+timeframe: "15m"
+loop_seconds: 30
+
+max_positions: 2
+risk_per_trade_usd: 15
+daily_loss_limit_usd: 50
 
 leverage: 3
-margin_mode: "isolated"
+
+symbols_scan: 15
 
 strategy:
   ema_fast: 20
@@ -21,12 +20,4 @@ strategy:
   ema_trend: 200
   rsi_length: 14
   atr_length: 14
-  atr_sl_mult: 1.2
-  rr: 1.8
-
-filters:
-  min_price: 0.001
-  max_price: 100000
-  exclude_symbols:
-    - "BTC/USDC:USDC"
-    - "ETH/USDC:USDC"
+  rr: 1.5
