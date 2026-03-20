@@ -21,7 +21,3 @@ symbols:
   - symbol: "TRB/USDT:USDT"
     timeframe: "4h"
     limit: 250
-
-  - symbol: "1000SHIB/USDT:USDT"
-    timeframe: "4h"
-    limit: 250
