@@ -1,2 +1,2 @@
-ccxt==4.4.76
-PyYAML==6.0.2
+ccxt
+PyYAML
