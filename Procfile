@@ -1,1 +1,1 @@
-worker: python bot.py --config config.yaml
+worker: python -u bot.py
