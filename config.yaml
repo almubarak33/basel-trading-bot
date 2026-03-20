@@ -10,15 +10,18 @@ telegram_chat_id:
 crypto_provider: binanceusdm
 
 symbols:
-  - symbol: "BTC/USDT"
+  - symbol: "BTC/USDT:USDT"
     timeframe: "4h"
     limit: 250
-  - symbol: "ETH/USDT"
+
+  - symbol: "ETH/USDT:USDT"
     timeframe: "4h"
     limit: 250
-  - symbol: "TRB/USDT"
+
+  - symbol: "TRB/USDT:USDT"
     timeframe: "4h"
     limit: 250
-  - symbol: "SHIB/USDT"
+
+  - symbol: "1000SHIB/USDT:USDT"
     timeframe: "4h"
     limit: 250
