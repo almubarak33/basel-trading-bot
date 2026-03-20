@@ -5,6 +5,7 @@ exchange: okx
 
 timeframe: "15m"
 loop_seconds: 30
+risk_per_trade_usd: 15
 
 max_positions: 2
 risk_per_trade_usd: 15
