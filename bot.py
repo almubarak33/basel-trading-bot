@@ -34,26 +34,25 @@ def get_signal(ohlcv):
     return None
 
 
-def get_contract_size(symbol):
-    market = exchange.market(symbol)
-    return market.get("contractSize", 1)
-
-
 def calculate_amount(symbol):
+    market = exchange.market(symbol)
     ticker = exchange.fetch_ticker(symbol)
+
     price = ticker["last"]
+    contract_size = market.get("contractSize", 1)
 
     usdt = config["risk_per_trade_usd"]
 
-    contract_size = get_contract_size(symbol)
-
     contracts = usdt / (price * contract_size)
 
-    # أهم سطر 🔥
+    # ضبط precision
     contracts = float(exchange.amount_to_precision(symbol, contracts))
 
-    if contracts <= 0:
-        return None
+    # 🔥 الحل هنا: فرض حد أدنى
+    min_amount = market["limits"]["amount"]["min"] or 0.01
+
+    if contracts < min_amount:
+        contracts = min_amount
 
     return contracts
 
@@ -61,10 +60,6 @@ def calculate_amount(symbol):
 def place_trade(symbol, side):
     try:
         amount = calculate_amount(symbol)
-
-        if not amount:
-            print("Amount too small")
-            return
 
         print(f"Placing {side} {symbol} amount={amount}")
 
