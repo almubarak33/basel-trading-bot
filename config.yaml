@@ -1,21 +1,8 @@
 enabled: true
-emergency_close_all: false
-
-exchange: "okx"
-
 timeframe: "15m"
 loop_seconds: 30
 
-risk_per_trade_usd: 15
-max_positions: 3
+risk_per_trade_usd: 10
+max_positions: 2
 
-use_all_symbols: true
-
-filters:
-  min_volume: 1000000
-
-risk:
-  sl_pct: 0.015     # وقف خسارة 1.5%
-  tp_pct: 0.03      # هدف 3%
-
-cooldown_minutes: 20
+leverage: 3
