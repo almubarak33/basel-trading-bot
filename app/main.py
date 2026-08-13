@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import json
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
@@ -10,8 +11,9 @@ from .config import settings
 from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
+from . import engine
 
-app = FastAPI(title="Basel Trader Mobile", version="0.2.0")
+app = FastAPI(title="Basel Trader Mobile", version="0.3.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 
@@ -22,8 +24,9 @@ class OrderRequest(BaseModel):
     target: float = Field(gt=0)
 
 @app.on_event("startup")
-def startup():
+async def startup():
     init_db()
+    asyncio.create_task(engine.auto_loop())
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -39,6 +42,7 @@ async def status():
         "risk_per_trade_pct": settings.risk_per_trade * 100,
         "max_daily_loss_pct": settings.max_daily_loss * 100,
         "min_score": settings.min_score,
+        "engine": engine.state(),
     }
     if not alpaca.configured():
         return base
@@ -71,10 +75,20 @@ async def api_scan():
 def trades():
     return {"events": recent_events()}
 
+@app.post("/api/auto")
+def auto(enabled: bool):
+    if enabled and (not settings.paper or not alpaca.configured()):
+        raise HTTPException(403, "Auto mode requires a configured Alpaca PAPER account.")
+    if enabled and KILL_SWITCH:
+        raise HTTPException(423, "Kill switch is ON.")
+    return {"auto_enabled": engine.set_auto(enabled)}
+
 @app.post("/api/kill-switch")
 def kill_switch(enabled: bool = True):
     global KILL_SWITCH
     KILL_SWITCH = enabled
+    if enabled:
+        engine.set_auto(False)
     log_event("kill_switch", None, json.dumps({"enabled": enabled}))
     return {"kill_switch": KILL_SWITCH}
 
