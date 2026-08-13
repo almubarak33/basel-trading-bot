@@ -1,0 +1,10 @@
+{
+  "name": "Basel Trader",
+  "short_name": "Basel Trader",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0d12",
+  "theme_color": "#0a0d12",
+  "description": "US Momentum Paper Trading Dashboard",
+  "icons": []
+}
