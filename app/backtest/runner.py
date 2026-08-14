@@ -42,6 +42,7 @@ class BacktestResult:
     orders_cancelled: int
     guard_days: int
     config: BacktestConfig
+    benchmarks: dict[str, dict] = field(default_factory=dict)
     diagnostics: dict = field(default_factory=dict)
 
 
@@ -94,6 +95,30 @@ def _prefilter(symbols: list[str], change_map: dict[str, float], ctx: _DayContex
         if not (cfg_settings.min_change_pct <= change <= cfg_settings.max_change_pct): continue
         kept.append(symbol)
     return kept
+
+
+def _benchmark_stats(store: BarStore, cfg: BacktestConfig) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    sessions = [d for d in store.sessions() if cfg.start <= d <= cfg.end]
+    for symbol in BENCHMARK_SYMBOLS:
+        bars: list[dict] = []
+        for day in sessions:
+            bars.extend(store.minute_bars(symbol, day))
+        if not bars:
+            out[symbol] = {"available": False}
+            continue
+        start_price = float(bars[0].get("o") or bars[0].get("c") or 0)
+        end_price = float(bars[-1].get("c") or bars[-1].get("o") or 0)
+        if start_price <= 0 or end_price <= 0:
+            out[symbol] = {"available": False}
+            continue
+        out[symbol] = {
+            "available": True,
+            "start_price": round(start_price, 4),
+            "end_price": round(end_price, 4),
+            "total_return_pct": round((end_price / start_price - 1) * 100, 2),
+        }
+    return out
 
 
 def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> BacktestResult:
@@ -179,6 +204,7 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
     return BacktestResult(trades=broker.trades,equity_curve=equity_curve,daily_equity=daily_equity,
         starting_equity=cfg.starting_equity,sessions=sessions,orders_placed=orders_placed,
         orders_cancelled=broker.cancelled,guard_days=guard_days,config=cfg,
+        benchmarks=_benchmark_stats(store,cfg),
         diagnostics={"reject_reasons":dict(sorted(rejected_reasons.items(),key=lambda kv:kv[1],reverse=True))})
 
 
