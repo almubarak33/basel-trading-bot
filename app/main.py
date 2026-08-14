@@ -11,12 +11,11 @@ from .config import settings
 from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
-from . import engine
+from . import engine, simulation, trade_manager
 from .optionalpha import trigger_webhook
-from . import simulation
 from .intelligence import enrich_candidate, market_brief
 
-app = FastAPI(title="Basel Trader Mobile", version="0.7.0")
+app = FastAPI(title="Basel Trader Mobile", version="0.8.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 
@@ -30,6 +29,7 @@ class OrderRequest(BaseModel):
 async def startup():
     init_db()
     asyncio.create_task(engine.auto_loop())
+    asyncio.create_task(trade_manager.manager_loop())
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -50,6 +50,7 @@ async def status():
             "min_rvol": settings.min_rvol,
             "opening_delay_minutes": settings.opening_delay_minutes,
             "engine": engine.state(),
+            "trade_manager": trade_manager.state(),
             "risk_status": {"blocked": False, "drawdown_pct": 0.0, "simulation": True},
         })
         return sim
@@ -60,7 +61,7 @@ async def status():
         "option_alpha_enabled":settings.option_alpha_enabled,"kill_switch":KILL_SWITCH,
         "risk_per_trade_pct":settings.risk_per_trade*100,"max_daily_loss_pct":settings.max_daily_loss*100,
         "min_score":settings.min_score,"min_rvol":settings.min_rvol,"opening_delay_minutes":settings.opening_delay_minutes,
-        "engine":engine.state(),
+        "engine":engine.state(),"trade_manager":trade_manager.state(),
     }
     try:
         account=await alpaca.account(); clock=await alpaca.clock(); risk=await alpaca.risk_status(); regime=await alpaca.market_regime()
@@ -83,11 +84,16 @@ async def pro_dashboard():
             "top_signal": enriched[0] if enriched else None,
             "modules": {
                 "smart_radar": True,"smart_map": True,"risk_engine": True,"market_regime": True,
-                "catalyst_feed": False,"insider_sec": False,"paper_execution": alpaca.configured(),
+                "catalyst_feed": False,"insider_sec": False,
+                "paper_execution": alpaca.configured(),
+                "autonomous_entry": True,"autonomous_exit": True,
             },
         }
     except Exception as e:
         raise HTTPException(502, f"Pro dashboard error: {e}")
+
+@app.get("/api/trade-manager")
+def trade_manager_status(): return trade_manager.state()
 
 @app.get("/api/risk-status")
 async def risk_status():
@@ -119,10 +125,17 @@ def auto(enabled: bool):
     return {"auto_enabled":engine.set_auto(enabled)}
 
 @app.post("/api/kill-switch")
-def kill_switch(enabled: bool=True):
+async def kill_switch(enabled: bool=True):
     global KILL_SWITCH
     KILL_SWITCH=enabled
-    if enabled: engine.set_auto(False)
+    if enabled:
+        engine.set_auto(False)
+        if alpaca.configured() and settings.paper and settings.enable_orders:
+            try:
+                result=await alpaca.close_all_positions()
+                log_event("kill_switch_flatten",None,json.dumps(result))
+            except Exception as e:
+                log_event("kill_switch_flatten_error",None,json.dumps({"error":str(e)}))
     log_event("kill_switch",None,json.dumps({"enabled":enabled})); return {"kill_switch":KILL_SWITCH}
 
 @app.post("/api/paper/order")
