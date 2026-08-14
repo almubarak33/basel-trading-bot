@@ -44,7 +44,8 @@ class Alpaca:
             r=await c.delete(url,headers=self.headers,params=params); r.raise_for_status()
             if not r.content: return {"ok":True}
             try: return r.json()
-            except Exception: return {"ok":True,"text":r.text}
+            except Exception: return {"ok":True,"text":r.text
+            }
 
     async def movers(self,top:int): return await self._get(f"{DATA}/v1beta1/screener/stocks/movers",{"top":min(top,50)})
     async def most_actives(self,top:int): return await self._get(f"{DATA}/v1beta1/screener/stocks/most-actives",{"top":min(top,100),"by":"volume"})
@@ -62,6 +63,25 @@ class Alpaca:
         if not symbols:return {}
         payload=await self._get(f"{DATA}/v2/stocks/trades/latest",{"symbols":",".join(symbols)})
         return payload.get("trades", payload)
+
+    async def news(self, symbols:list[str], hours:int=24, limit:int=50):
+        """Return recent Alpaca news grouped by symbol."""
+        if not symbols:return {}
+        start=datetime.now(timezone.utc)-timedelta(hours=max(1,hours))
+        payload=await self._get(f"{DATA}/v1beta1/news",{
+            "symbols":",".join(symbols),
+            "start":start.isoformat().replace("+00:00","Z"),
+            "sort":"desc",
+            "limit":min(max(limit,1),50),
+            "include_content":"false",
+        })
+        articles=payload.get("news", payload if isinstance(payload,list) else [])
+        grouped={s:[] for s in symbols}
+        for article in articles or []:
+            for symbol in article.get("symbols") or []:
+                symbol=str(symbol).upper()
+                if symbol in grouped: grouped[symbol].append(article)
+        return grouped
 
     async def intraday_bars(self,symbols:list[str],minutes:int=240):
         if not symbols:return {}
