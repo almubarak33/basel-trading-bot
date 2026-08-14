@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timedelta, timezone
 import httpx
 from .config import settings
 
@@ -16,13 +17,13 @@ class Alpaca:
         return bool(settings.api_key and settings.api_secret)
 
     async def _get(self, url: str, params=None):
-        async with httpx.AsyncClient(timeout=12) as c:
+        async with httpx.AsyncClient(timeout=15) as c:
             r = await c.get(url, headers=self.headers, params=params)
             r.raise_for_status()
             return r.json()
 
     async def _post(self, url: str, payload: dict):
-        async with httpx.AsyncClient(timeout=12) as c:
+        async with httpx.AsyncClient(timeout=15) as c:
             r = await c.post(url, headers=self.headers, json=payload)
             r.raise_for_status()
             return r.json()
@@ -31,12 +32,31 @@ class Alpaca:
         return await self._get(f"{DATA}/v1beta1/screener/stocks/movers", {"top": min(top, 50)})
 
     async def most_actives(self, top: int):
-        return await self._get(f"{DATA}/v1beta1/screener/stocks/most-actives", {"top": min(top, 100), "by": "volume"})
+        return await self._get(
+            f"{DATA}/v1beta1/screener/stocks/most-actives",
+            {"top": min(top, 100), "by": "volume"},
+        )
 
     async def snapshots(self, symbols: list[str]):
         if not symbols:
             return {}
         return await self._get(f"{DATA}/v2/stocks/snapshots", {"symbols": ",".join(symbols)})
+
+    async def intraday_bars(self, symbols: list[str], minutes: int = 240):
+        if not symbols:
+            return {}
+        start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        payload = await self._get(
+            f"{DATA}/v2/stocks/bars",
+            {
+                "symbols": ",".join(symbols),
+                "timeframe": "1Min",
+                "start": start.isoformat().replace("+00:00", "Z"),
+                "limit": 10000,
+                "adjustment": "raw",
+            },
+        )
+        return payload.get("bars", {})
 
     async def account(self):
         return await self._get(f"{PAPER}/v2/account")
