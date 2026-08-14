@@ -99,6 +99,21 @@ class Alpaca:
     async def open_orders(self): return await self._get(f"{PAPER}/v2/orders",{"status":"open","nested":"true","limit":500})
     async def clock(self): return await self._get(f"{PAPER}/v2/clock")
 
+    async def fill_activities(self, days:int=90, max_pages:int=10) -> list[dict]:
+        """Return chronological FILL activities, including broker-native bracket exits."""
+        after=(datetime.now(timezone.utc)-timedelta(days=max(1,days))).isoformat().replace("+00:00","Z")
+        out=[]; page_token=None
+        for _ in range(max(1,max_pages)):
+            params={"after":after,"direction":"asc","page_size":100}
+            if page_token: params["page_token"]=page_token
+            page=await self._get(f"{PAPER}/v2/account/activities/FILL",params)
+            if not isinstance(page,list) or not page: break
+            out.extend(page)
+            if len(page)<100: break
+            page_token=page[-1].get("id")
+            if not page_token: break
+        return out
+
     async def risk_status(self):
         account=await self.account(); equity=float(account.get("equity",0) or 0); last_equity=float(account.get("last_equity",equity) or equity)
         dd=((equity/last_equity)-1)*100 if last_equity>0 else 0
