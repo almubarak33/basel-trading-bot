@@ -2,28 +2,37 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from . import auth
 from .alpaca import alpaca
 from .config import settings
 from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
 from . import engine, simulation, trade_manager
+from .orders import build_bracket_order
 from .optionalpha import trigger_webhook
 from .intelligence import enrich_candidate, market_brief
+from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
 
-app = FastAPI(title="Basel Trader Mobile", version="0.8.0")
+app = FastAPI(title="Basel Trader Mobile", version="0.9.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
+
+# Every route that reads account state or changes bot behaviour sits behind this.
+protected = [Depends(auth.require_auth)]
 
 class OrderRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
     entry: float = Field(gt=0)
     stop: float = Field(gt=0)
     target: float = Field(gt=0)
+
+class LoginRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
 
 @app.on_event("startup")
 async def startup():
@@ -35,7 +44,7 @@ async def startup():
 def home():
     return (Path(__file__).resolve().parent / "static" / "index.html").read_text()
 
-@app.get("/api/status")
+@app.get("/api/status", dependencies=protected)
 async def status():
     if not alpaca.configured():
         sim = simulation.status()
@@ -69,7 +78,7 @@ async def status():
     except Exception as e: base["broker_error"]=str(e)
     return base
 
-@app.get("/api/pro/dashboard")
+@app.get("/api/pro/dashboard", dependencies=protected)
 async def pro_dashboard():
     s = await status()
     try:
@@ -92,15 +101,49 @@ async def pro_dashboard():
     except Exception as e:
         raise HTTPException(502, f"Pro dashboard error: {e}")
 
-@app.get("/api/trade-manager")
+@app.get("/api/i18n")
+def i18n():
+    """The full message catalog, so the client can switch language without refetching data.
+
+    Deliberately public: it is static UI text, and the login screen needs it to
+    render in the user's language before a session exists.
+    """
+    return {"languages": list(LANGUAGES), "default": DEFAULT_LANGUAGE, "messages": MESSAGES}
+
+@app.get("/api/session")
+def session_state(basel_session: str | None = Cookie(default=None)):
+    """Lets the dashboard decide between the login screen and the app."""
+    return {"authenticated": auth.is_valid_session(basel_session),
+            "ephemeral_token": auth.TOKEN_IS_EPHEMERAL}
+
+@app.post("/api/login")
+def login(req: LoginRequest, request: Request, response: Response):
+    remaining = auth.throttle_state(request)
+    if remaining > 0:
+        raise HTTPException(429, f"Too many attempts. Try again in {int(remaining)}s.")
+    if not auth.token_matches(req.token):
+        auth.register_failure(request)
+        raise HTTPException(401, "Invalid token.")
+    auth.clear_failures(request)
+    auth.set_session_cookie(response, request, auth.create_session())
+    log_event("login", None, json.dumps({"ok": True}))
+    return {"authenticated": True}
+
+@app.post("/api/logout")
+def logout(response: Response, basel_session: str | None = Cookie(default=None)):
+    auth.destroy_session(basel_session)
+    auth.clear_session_cookie(response)
+    return {"authenticated": False}
+
+@app.get("/api/trade-manager", dependencies=protected)
 def trade_manager_status(): return trade_manager.state()
 
-@app.get("/api/risk-status")
+@app.get("/api/risk-status", dependencies=protected)
 async def risk_status():
     if not alpaca.configured(): return {"blocked":False,"drawdown_pct":0.0,"simulation":True}
     return await alpaca.risk_status()
 
-@app.get("/api/scan")
+@app.get("/api/scan", dependencies=protected)
 async def api_scan():
     try:
         if not alpaca.configured():
@@ -108,23 +151,23 @@ async def api_scan():
         rows=await scan(); log_event("scan",None,json.dumps({"count":len(rows)})); return {"candidates":rows,"simulation":False}
     except Exception as e: raise HTTPException(502,f"Market data error: {e}")
 
-@app.get("/api/trades")
+@app.get("/api/trades", dependencies=protected)
 def trades(): return {"events":recent_events()}
 
-@app.post("/api/optionalpha/test")
+@app.post("/api/optionalpha/test", dependencies=protected)
 async def optionalpha_test():
     if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON.")
     try:
         result=await trigger_webhook(); log_event("optionalpha_webhook",None,json.dumps(result)); return result
     except Exception as e: raise HTTPException(502,f"Option Alpha webhook error: {e}")
 
-@app.post("/api/auto")
+@app.post("/api/auto", dependencies=protected)
 def auto(enabled: bool):
     if enabled and (not settings.paper or not alpaca.configured()): raise HTTPException(403,"Auto mode requires a configured Alpaca PAPER account.")
     if enabled and KILL_SWITCH: raise HTTPException(423,"Kill switch is ON.")
     return {"auto_enabled":engine.set_auto(enabled)}
 
-@app.post("/api/kill-switch")
+@app.post("/api/kill-switch", dependencies=protected)
 async def kill_switch(enabled: bool=True):
     global KILL_SWITCH
     KILL_SWITCH=enabled
@@ -138,7 +181,7 @@ async def kill_switch(enabled: bool=True):
                 log_event("kill_switch_flatten_error",None,json.dumps({"error":str(e)}))
     log_event("kill_switch",None,json.dumps({"enabled":enabled})); return {"kill_switch":KILL_SWITCH}
 
-@app.post("/api/paper/order")
+@app.post("/api/paper/order", dependencies=protected)
 async def paper_order(req: OrderRequest):
     if not alpaca.configured(): raise HTTPException(403,"Simulation mode only. Connect Alpaca PAPER before sending broker orders.")
     if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON.")
@@ -152,5 +195,5 @@ async def paper_order(req: OrderRequest):
     if len(positions)>=settings.max_open_positions: raise HTTPException(409,"Maximum open positions reached.")
     equity=float(account.get("equity",settings.paper_equity)); qty=position_size(equity,req.entry,req.stop)
     if qty<1: raise HTTPException(400,"Calculated position size is zero.")
-    payload={"symbol":req.symbol.upper(),"qty":str(qty),"side":"buy","type":"limit","time_in_force":"day","limit_price":str(round(req.entry,2)),"order_class":"bracket","take_profit":{"limit_price":str(round(req.target,2))},"stop_loss":{"stop_price":str(round(req.stop,2))},"client_order_id":f"basel-{req.symbol.lower()}"}
+    payload=build_bracket_order(req.symbol,qty,req.entry,req.stop,req.target,source="manual")
     result=await alpaca.submit_order(payload); log_event("paper_order",req.symbol.upper(),json.dumps(result)); return {"qty":qty,"order":result}

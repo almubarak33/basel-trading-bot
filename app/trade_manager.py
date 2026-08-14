@@ -1,34 +1,21 @@
 from __future__ import annotations
 import asyncio, json
 from datetime import datetime, timezone
-from .alpaca import alpaca
+from .alpaca import alpaca, extract_stop_prices
 from .config import settings
 from .db import log_event
+from .exits import PositionState, evaluate_exit
+from .session import minutes_until
 
-TRACKED: dict[str, dict] = {}
+TRACKED: dict[str, PositionState] = {}
 LAST_RUN = None
 LAST_ERROR = None
 LAST_ACTION = None
 
 
 def state():
-    return {"enabled": settings.auto_manage_positions,"last_run":LAST_RUN,"last_error":LAST_ERROR,"last_action":LAST_ACTION,"tracked":TRACKED}
-
-
-def _ema(values,n):
-    if not values:return 0.0
-    k=2/(n+1); out=values[0]
-    for v in values[1:]: out=v*k+out*(1-k)
-    return out
-
-
-def _vwap(bars):
-    pv=vol=0.0
-    for b in bars:
-        v=float(b.get("v") or 0); c=float(b.get("c") or 0); h=float(b.get("h") or c); l=float(b.get("l") or c)
-        if v<=0: continue
-        pv+=((h+l+c)/3)*v; vol+=v
-    return pv/vol if vol else 0.0
+    tracked={s:{"entry":p.entry,"high":p.high,"fail_checks":p.fail_checks,"first_seen":p.first_seen.isoformat()} for s,p in TRACKED.items()}
+    return {"enabled": settings.auto_manage_positions,"last_run":LAST_RUN,"last_error":LAST_ERROR,"last_action":LAST_ACTION,"tracked":tracked}
 
 
 async def _close(symbol, reason, meta=None):
@@ -46,6 +33,10 @@ async def manage_once():
     LAST_RUN=datetime.now(timezone.utc).isoformat(); LAST_ERROR=None
     if not (settings.paper and settings.enable_orders and settings.auto_manage_positions and alpaca.configured()): return
 
+    clock=await alpaca.clock()
+    if not clock.get("is_open",False):
+        TRACKED.clear(); return
+
     risk=await alpaca.risk_status()
     positions=await alpaca.positions()
     if risk.get("blocked") and positions and settings.close_on_daily_guard:
@@ -54,9 +45,22 @@ async def manage_once():
         TRACKED.clear(); return
     if not positions: TRACKED.clear(); return
 
+    # Bracket legs are day orders: whatever survives to the bell loses its stop
+    # and carries into the next session's opening gap unprotected.
+    minutes_left=minutes_until(clock.get("next_close"))
+    if settings.eod_flatten_enabled and minutes_left is not None and 0<minutes_left<=settings.eod_flatten_minutes:
+        result=await alpaca.close_all_positions()
+        log_event("eod_flatten",None,json.dumps({
+            "minutes_to_close":round(minutes_left,1),
+            "symbols":[(p.get("symbol") or "").upper() for p in positions],
+            "result":result,
+        }))
+        TRACKED.clear(); return
+
     symbols=[(p.get("symbol") or "").upper() for p in positions if p.get("symbol")]
     bars_map=await alpaca.intraday_bars(symbols,minutes=180)
     regime=await alpaca.market_regime()
+    stops=extract_stop_prices(await alpaca.open_orders())
     now=datetime.now(timezone.utc)
 
     for p in positions:
@@ -64,31 +68,19 @@ async def manage_once():
         if not symbol: continue
         entry=float(p.get("avg_entry_price") or 0); current=float(p.get("current_price") or 0)
         if entry<=0 or current<=0: continue
-        rows=bars_map.get(symbol,[]); closes=[float(b.get("c") or 0) for b in rows if float(b.get("c") or 0)>0]
-        if len(closes)<20: continue
-        ema20=_ema(closes[-80:],20); vwap=_vwap(rows)
-        rec=TRACKED.setdefault(symbol,{"first_seen":now.isoformat(),"high":current,"fail_checks":0,"entry":entry})
-        rec["high"]=max(float(rec.get("high",current)),current)
-        first=datetime.fromisoformat(rec["first_seen"]); held=(now-first).total_seconds()/60
-
-        # Infer initial risk from a conservative 1.5% fallback when broker position lacks stop metadata.
-        initial_r=max(entry*0.015,0.01)
-        r_now=(current-entry)/initial_r; r_high=(rec["high"]-entry)/initial_r
-
-        thesis_failed=current < ema20 and current < vwap
-        rec["fail_checks"] = int(rec.get("fail_checks",0))+1 if thesis_failed else 0
-
-        if rec["fail_checks"] >= settings.thesis_fail_checks:
-            await _close(symbol,"thesis_invalidated",{"current":current,"ema20":ema20,"vwap":vwap,"r_now":round(r_now,2)}); continue
-
-        if r_high >= settings.protect_profit_after_r and r_now <= settings.protected_floor_r:
-            await _close(symbol,"profit_protection",{"r_high":round(r_high,2),"r_now":round(r_now,2)}); continue
-
-        if not regime.get("longs_allowed",True) and current < entry and r_now <= -0.35:
-            await _close(symbol,"market_regime_risk_off",{"r_now":round(r_now,2)}); continue
-
-        if held >= settings.max_hold_minutes and r_now < 0.5:
-            await _close(symbol,"time_stop",{"held_minutes":round(held,1),"r_now":round(r_now,2)})
+        rec=TRACKED.get(symbol)
+        if rec is None:
+            rec=PositionState(symbol=symbol,entry=entry,first_seen=now,high=current)
+            TRACKED[symbol]=rec
+        # Anchor R to the real entry stop. Only set once: as a stop trails up the
+        # risk it represents shrinks, but R must stay measured against the risk
+        # actually taken at entry.
+        if rec.initial_risk_per_share is None:
+            stop=stops.get(symbol,0.0)
+            if 0<stop<rec.entry: rec.initial_risk_per_share=rec.entry-stop
+        decision=evaluate_exit(rec,current,bars_map.get(symbol,[]),regime,now,settings)
+        if decision:
+            await _close(symbol,decision.reason,decision.meta)
 
 
 async def manager_loop():

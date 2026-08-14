@@ -2,11 +2,17 @@ from __future__ import annotations
 import random
 from copy import deepcopy
 
+from .messages import render
+
+def _codes(*names: str) -> list[dict]:
+    return [{"code": name} for name in names]
+
+
 _BASE = [
-    {"symbol":"NOVA","price":4.82,"change_pct":18.4,"rvol":5.4,"spread_pct":0.18,"score":92,"vwap":4.74,"ema9":4.78,"ema20":4.70,"atr":0.11,"entry":4.84,"stop":4.68,"target":5.16,"risk_pct":3.31,"eligible":True,"setup":"PULLBACK_RECLAIM","reasons":["Controlled pullback detected","VWAP + EMA reclaim confirmed","Reclaim volume confirmed"],"reject_reasons":[]},
-    {"symbol":"KXIN","price":7.15,"change_pct":12.6,"rvol":3.9,"spread_pct":0.21,"score":88,"vwap":7.05,"ema9":7.10,"ema20":7.01,"atr":0.16,"entry":7.17,"stop":6.94,"target":7.63,"risk_pct":3.21,"eligible":True,"setup":"PULLBACK_RECLAIM","reasons":["Controlled pullback detected","VWAP + EMA reclaim confirmed","Reclaim volume confirmed"],"reject_reasons":[]},
-    {"symbol":"AERO","price":3.46,"change_pct":27.8,"rvol":6.7,"spread_pct":0.33,"score":81,"vwap":3.31,"ema9":3.40,"ema20":3.28,"atr":0.14,"entry":3.47,"stop":3.31,"target":3.79,"risk_pct":4.61,"eligible":False,"setup":"WAIT","reasons":["Reclaim volume confirmed"],"reject_reasons":["FOMO block: too far above VWAP","No controlled pullback yet"]},
-    {"symbol":"BOLT","price":12.90,"change_pct":6.4,"rvol":1.8,"spread_pct":0.62,"score":74,"vwap":12.71,"ema9":12.78,"ema20":12.69,"atr":0.22,"entry":12.92,"stop":12.60,"target":13.56,"risk_pct":2.48,"eligible":False,"setup":"WAIT","reasons":[],"reject_reasons":["RVOL below threshold","Spread too wide","No VWAP/EMA reclaim confirmation"]}
+    {"symbol":"NOVA","price":4.82,"change_pct":18.4,"rvol":5.4,"spread_pct":0.18,"score":92,"vwap":4.74,"ema9":4.78,"ema20":4.70,"atr":0.11,"entry":4.84,"stop":4.68,"target":5.16,"risk_pct":3.31,"eligible":True,"setup":"PULLBACK_RECLAIM","reason_codes":_codes("pullback_detected","reclaim_confirmed","volume_confirmed"),"reject_codes":[]},
+    {"symbol":"KXIN","price":7.15,"change_pct":12.6,"rvol":3.9,"spread_pct":0.21,"score":88,"vwap":7.05,"ema9":7.10,"ema20":7.01,"atr":0.16,"entry":7.17,"stop":6.94,"target":7.63,"risk_pct":3.21,"eligible":True,"setup":"PULLBACK_RECLAIM","reason_codes":_codes("pullback_detected","reclaim_confirmed","volume_confirmed"),"reject_codes":[]},
+    {"symbol":"AERO","price":3.46,"change_pct":27.8,"rvol":6.7,"spread_pct":0.33,"score":81,"vwap":3.31,"ema9":3.40,"ema20":3.28,"atr":0.14,"entry":3.47,"stop":3.31,"target":3.79,"risk_pct":4.61,"eligible":False,"setup":"WAIT","reason_codes":_codes("volume_confirmed"),"reject_codes":_codes("vwap_extended","no_pullback")},
+    {"symbol":"BOLT","price":12.90,"change_pct":6.4,"rvol":1.8,"spread_pct":0.62,"score":74,"vwap":12.71,"ema9":12.78,"ema20":12.69,"atr":0.22,"entry":12.92,"stop":12.60,"target":13.56,"risk_pct":2.48,"eligible":False,"setup":"WAIT","reason_codes":[],"reject_codes":_codes("rvol_too_low","spread_too_wide","no_reclaim")}
 ]
 
 _state = deepcopy(_BASE)
@@ -37,6 +43,8 @@ def scan():
         x["reclaim_confirmed"]=x["eligible"]
         x["volume_confirmed"]=x["rvol"]>=2.0
         x["market_regime"]=status()["market_regime"]
+        x["reasons"]=[render(c["code"],c.get("params")) for c in x["reason_codes"]]
+        x["reject_reasons"]=[render(c["code"],c.get("params")) for c in x["reject_codes"]]
         rows.append(x)
     _state=rows
     return sorted(rows,key=lambda r:(r["eligible"],r["score"],r["rvol"]),reverse=True)

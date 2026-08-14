@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from statistics import mean
 from .config import settings
+from .indicators import num as _num, ema as _ema, vwap as _vwap
+from .messages import MessageList
 
 @dataclass
 class Candidate:
@@ -13,8 +15,12 @@ class Candidate:
     score: float
     eligible: bool
     setup: str
+    # Human-readable English, kept for existing consumers and logs.
     reasons: list[str]
     reject_reasons: list[str]
+    # Language-neutral equivalents the client renders in the active language.
+    reason_codes: list[dict]
+    reject_codes: list[dict]
     vwap: float
     ema9: float
     ema20: float
@@ -31,18 +37,6 @@ class Candidate:
     risk_pct: float
 
 
-def _num(v, default=0.0):
-    try: return float(v)
-    except (TypeError, ValueError): return default
-
-
-def _ema(values: list[float], length: int) -> float:
-    if not values: return 0.0
-    k = 2 / (length + 1); result = values[0]
-    for v in values[1:]: result = v * k + result * (1-k)
-    return result
-
-
 def _atr(bars: list[dict], length: int = 14) -> float:
     if len(bars) < 2: return 0.0
     trs=[]; prev_close=_num(bars[0].get("c"))
@@ -50,16 +44,6 @@ def _atr(bars: list[dict], length: int = 14) -> float:
         high,low,close=_num(b.get("h")),_num(b.get("l")),_num(b.get("c"))
         trs.append(max(high-low,abs(high-prev_close),abs(low-prev_close))); prev_close=close
     return mean(trs[-length:]) if trs else 0.0
-
-
-def _vwap(bars: list[dict]) -> float:
-    pv=vol=0.0
-    for b in bars:
-        v=_num(b.get("v"))
-        if v<=0: continue
-        typical=(_num(b.get("h"))+_num(b.get("l"))+_num(b.get("c")))/3
-        pv += typical*v; vol += v
-    return pv/vol if vol else 0.0
 
 
 def build_candidate(symbol: str, change_pct: float, volume_rank: int, snapshot: dict, bars: list[dict], avg_daily_volume: float = 0.0, session_fraction: float = 1.0) -> Candidate:
@@ -91,18 +75,18 @@ def build_candidate(symbol: str, change_pct: float, volume_rank: int, snapshot: 
     last_vol=volumes[-1] if volumes else 0
     volume_confirmed=bool(avg_vol>0 and last_vol>=avg_vol*0.85)
 
-    reject=[]; reasons=[]
-    if len(bars)<settings.min_bars: reject.append("Insufficient intraday history")
-    if not(settings.min_price<=price<=settings.max_price): reject.append("Price outside allowed range")
-    if not(settings.min_change_pct<=change_pct<=settings.max_change_pct): reject.append("Move too weak or already overextended")
-    if spread_pct>settings.max_spread_pct: reject.append("Spread too wide")
-    if rvol and rvol<settings.min_rvol: reject.append("RVOL below minimum")
-    if vwap_ext>settings.max_vwap_extension_pct: reject.append("FOMO block: too far above VWAP")
-    if ema20_ext>settings.max_ema20_extension_pct: reject.append("FOMO block: too far above EMA20")
-    if one_bar_move>settings.max_one_bar_move_pct: reject.append("FOMO block: current 1m candle too large")
-    if not pullback_seen: reject.append("No controlled pullback yet")
-    if not reclaim_confirmed: reject.append("No VWAP/EMA reclaim confirmation")
-    if not volume_confirmed: reject.append("Reclaim volume not confirmed")
+    reject=MessageList(); reasons=MessageList()
+    if len(bars)<settings.min_bars: reject.add("insufficient_history")
+    if not(settings.min_price<=price<=settings.max_price): reject.add("price_out_of_range")
+    if not(settings.min_change_pct<=change_pct<=settings.max_change_pct): reject.add("move_out_of_range")
+    if spread_pct>settings.max_spread_pct: reject.add("spread_too_wide")
+    if rvol and rvol<settings.min_rvol: reject.add("rvol_too_low")
+    if vwap_ext>settings.max_vwap_extension_pct: reject.add("vwap_extended")
+    if ema20_ext>settings.max_ema20_extension_pct: reject.add("ema20_extended")
+    if one_bar_move>settings.max_one_bar_move_pct: reject.add("bar_too_large")
+    if not pullback_seen: reject.add("no_pullback")
+    if not reclaim_confirmed: reject.add("no_reclaim")
+    if not volume_confirmed: reject.add("no_volume_confirm")
 
     score=0.0
     if len(bars)>=settings.min_bars: score+=8
@@ -121,12 +105,12 @@ def build_candidate(symbol: str, change_pct: float, volume_rank: int, snapshot: 
     if settings.min_change_pct<=change_pct<=20: score+=4
     score=round(min(score,100),1)
 
-    if pullback_seen: reasons.append("Controlled pullback detected")
-    if reclaim_confirmed: reasons.append("VWAP + EMA reclaim confirmed")
-    if volume_confirmed: reasons.append("Reclaim volume confirmed")
-    if rvol>0: reasons.append(f"RVOL {rvol:.2f}x")
-    if 0<=vwap_ext<=settings.max_vwap_extension_pct: reasons.append(f"VWAP extension only {vwap_ext:.2f}%")
-    if spread_pct<=settings.max_spread_pct: reasons.append(f"Spread {spread_pct:.2f}%")
+    if pullback_seen: reasons.add("pullback_detected")
+    if reclaim_confirmed: reasons.add("reclaim_confirmed")
+    if volume_confirmed: reasons.add("volume_confirmed")
+    if rvol>0: reasons.add("rvol", value=f"{rvol:.2f}x")
+    if 0<=vwap_ext<=settings.max_vwap_extension_pct: reasons.add("vwap_extension", value=f"{vwap_ext:.2f}%")
+    if spread_pct<=settings.max_spread_pct: reasons.add("spread", value=f"{spread_pct:.2f}%")
 
     recent_lows=[_num(b.get("l")) for b in bars[-8:] if _num(b.get("l"))>0]
     swing_low=min(recent_lows) if recent_lows else 0.0
@@ -136,14 +120,14 @@ def build_candidate(symbol: str, change_pct: float, volume_rank: int, snapshot: 
     risk_pct=((price-stop)/price)*100 if price>0 else 999.0
     if risk_pct<settings.min_stop_pct:
         stop=price*(1-settings.min_stop_pct/100); risk_pct=settings.min_stop_pct
-    if risk_pct>settings.max_stop_pct: reject.append("Required stop is too wide")
+    if risk_pct>settings.max_stop_pct: reject.add("stop_too_wide")
 
     entry=round(price,2); stop=round(stop,2); risk_dollars=max(entry-stop,0)
     target=round(entry+risk_dollars*settings.reward_r_multiple,2) if risk_dollars>0 else 0.0
     eligible=score>=settings.min_score and not reject and target>entry>stop>0
     setup="PULLBACK_RECLAIM" if eligible or (pullback_seen and reclaim_confirmed) else "WAIT"
 
-    return Candidate(symbol=symbol,price=round(price,4),change_pct=round(change_pct,2),volume_rank=volume_rank,spread_pct=round(spread_pct,3),score=score,eligible=eligible,setup=setup,reasons=reasons,reject_reasons=reject,vwap=round(vwap,4),ema9=round(ema9,4),ema20=round(ema20,4),atr=round(atr,4),rvol=round(rvol,2),vwap_extension_pct=round(vwap_ext,2),one_bar_move_pct=round(one_bar_move,2),pullback_seen=pullback_seen,reclaim_confirmed=reclaim_confirmed,volume_confirmed=volume_confirmed,entry=entry,stop=stop,target=target,risk_pct=round(risk_pct,2))
+    return Candidate(symbol=symbol,price=round(price,4),change_pct=round(change_pct,2),volume_rank=volume_rank,spread_pct=round(spread_pct,3),score=score,eligible=eligible,setup=setup,reasons=reasons.texts(),reject_reasons=reject.texts(),reason_codes=reasons.codes,reject_codes=reject.codes,vwap=round(vwap,4),ema9=round(ema9,4),ema20=round(ema20,4),atr=round(atr,4),rvol=round(rvol,2),vwap_extension_pct=round(vwap_ext,2),one_bar_move_pct=round(one_bar_move,2),pullback_seen=pullback_seen,reclaim_confirmed=reclaim_confirmed,volume_confirmed=volume_confirmed,entry=entry,stop=stop,target=target,risk_pct=round(risk_pct,2))
 
 
 def position_size(equity: float, entry: float, stop: float) -> int:

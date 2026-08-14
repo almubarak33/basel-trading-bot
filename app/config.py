@@ -11,6 +11,8 @@ def as_bool(name: str, default: bool = False) -> bool:
 class Settings:
     api_key: str = os.getenv("ALPACA_API_KEY", "")
     api_secret: str = os.getenv("ALPACA_API_SECRET", "")
+    # Shared secret for the dashboard/API. Generated per-process when unset.
+    api_token: str = os.getenv("API_TOKEN", "")
     paper: bool = as_bool("ALPACA_PAPER", True)
     enable_orders: bool = as_bool("ENABLE_PAPER_ORDERS", False)
     auto_paper_trading: bool = as_bool("AUTO_PAPER_TRADING", False)
@@ -54,5 +56,11 @@ class Settings:
     protected_floor_r: float = float(os.getenv("PROTECTED_FLOOR_R", "0.15"))
     max_hold_minutes: int = int(os.getenv("MAX_HOLD_MINUTES", "90"))
     close_on_daily_guard: bool = as_bool("CLOSE_ON_DAILY_GUARD", True)
+
+    # End of day. Bracket legs are day orders, so anything still open when they
+    # expire carries overnight unprotected. Disabling the flatten accepts that.
+    eod_flatten_enabled: bool = as_bool("EOD_FLATTEN_ENABLED", True)
+    eod_flatten_minutes: int = int(os.getenv("EOD_FLATTEN_MINUTES_BEFORE_CLOSE", "10"))
+    no_entry_minutes_before_close: int = int(os.getenv("NO_ENTRY_MINUTES_BEFORE_CLOSE", "30"))
 
 settings = Settings()

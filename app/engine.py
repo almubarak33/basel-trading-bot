@@ -1,23 +1,23 @@
 from __future__ import annotations
 import asyncio
 import json
-from datetime import datetime, timezone, timedelta, time
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone, timedelta
 from .alpaca import alpaca
+from .arming import ArmingTracker
 from .config import settings
 from .db import log_event
+from .orders import build_bracket_order
 from .scanner import scan
+from .session import NY, minutes_until, opening_delay_active
 from .strategy import position_size
 from .intelligence import enrich_candidate
-
-NY = ZoneInfo("America/New_York")
 AUTO_ENABLED = settings.auto_paper_trading
 STOP_REQUESTED = False
 LAST_SCAN = None
 LAST_ERROR = None
 LAST_CANDIDATE = None
 LAST_RISK_STATUS = None
-ARMED: dict[str, dict] = {}
+ARMED = ArmingTracker(lambda kind, symbol, payload: log_event(kind, symbol, json.dumps(payload)))
 COOLDOWNS: dict[str, datetime] = {}
 
 
@@ -36,17 +36,22 @@ def state():
         "last_candidate": LAST_CANDIDATE,
         "last_risk_status": LAST_RISK_STATUS,
         "interval_seconds": settings.scan_interval_seconds,
-        "armed_symbols": list(ARMED.keys()),
+        "armed_symbols": ARMED.symbols(),
         "cooldown_symbols": list(COOLDOWNS.keys()),
         "entry_model": "INTELLIGENCE_ARM + PULLBACK_RECLAIM_2_STAGE",
     }
 
 
 def _opening_delay_active() -> bool:
-    now = datetime.now(NY)
-    open_dt = datetime.combine(now.date(), time(9,30), tzinfo=NY)
-    delay_end = open_dt + timedelta(minutes=settings.opening_delay_minutes)
-    return open_dt <= now < delay_end
+    return opening_delay_active(datetime.now(NY), settings.opening_delay_minutes)
+
+
+def _entry_window_closed(clock: dict) -> bool:
+    """True once the session is too close to the bell to start a new trade."""
+    minutes_left = minutes_until(clock.get("next_close"))
+    if minutes_left is None:
+        return False
+    return minutes_left <= settings.no_entry_minutes_before_close
 
 
 def _cooldown_active(symbol: str) -> bool:
@@ -55,28 +60,6 @@ def _cooldown_active(symbol: str) -> bool:
     if datetime.now(timezone.utc) >= until:
         COOLDOWNS.pop(symbol, None); return False
     return True
-
-
-def _arm_or_confirm(candidate: dict) -> bool:
-    symbol = candidate["symbol"].upper(); current = ARMED.get(symbol)
-    if current is None:
-        ARMED[symbol] = {
-            "count":1,
-            "first_price":float(candidate["price"]),
-            "first_score":float(candidate["score"]),
-            "intel_score":float(candidate.get("intel_score") or 0),
-            "grade":candidate.get("grade"),
-        }
-        log_event("setup_armed", symbol, json.dumps(ARMED[symbol])); return False
-    first_price=float(current.get("first_price",candidate["price"])); now_price=float(candidate["price"])
-    if first_price>0 and (now_price/first_price-1)*100>1.0:
-        ARMED.pop(symbol,None); log_event("setup_disarmed",symbol,json.dumps({"reason":"price_ran_away"})); return False
-    current["count"]=int(current.get("count",1))+1
-    current["latest_score"]=float(candidate["score"])
-    current["latest_intel_score"]=float(candidate.get("intel_score") or 0)
-    if current["count"]>=2:
-        ARMED.pop(symbol,None); return True
-    return False
 
 
 async def auto_loop():
@@ -93,6 +76,9 @@ async def auto_loop():
                         log_event("daily_loss_guard", None, json.dumps(LAST_RISK_STATUS))
                     elif _opening_delay_active():
                         log_event("opening_delay", None, json.dumps({"minutes": settings.opening_delay_minutes}))
+                    elif _entry_window_closed(clock):
+                        # No point opening a trade the EOD flatten is about to close.
+                        ARMED.clear()
                     else:
                         raw_rows = await scan()
                         rows = [enrich_candidate(r) for r in raw_rows]
@@ -105,15 +91,12 @@ async def auto_loop():
                         LAST_CANDIDATE = eligible[0] if eligible else None
                         log_event("auto_scan", None, json.dumps({"intel_arm_candidates":len(eligible)}))
                         eligible_symbols={r["symbol"].upper() for r in eligible}
-                        for symbol in list(ARMED.keys()):
-                            if symbol not in eligible_symbols:
-                                ARMED.pop(symbol,None)
-                                log_event("setup_disarmed",symbol,json.dumps({"reason":"intel_or_setup_failed_recheck"}))
+                        ARMED.retain_only(eligible_symbols,"intel_or_setup_failed_recheck")
                         if settings.enable_orders:
                             for candidate in eligible[:3]:
                                 symbol=candidate["symbol"].upper()
                                 if _cooldown_active(symbol): continue
-                                if _arm_or_confirm(candidate):
+                                if ARMED.arm_or_confirm(candidate):
                                     await maybe_place_paper_order(candidate); break
         except Exception as e:
             LAST_ERROR=str(e); log_event("auto_error",None,json.dumps({"error":LAST_ERROR}))
@@ -126,6 +109,8 @@ async def maybe_place_paper_order(candidate: dict):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"intel_decision_not_arm"})); return
     if _opening_delay_active():
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"opening_delay"})); return
+    if _entry_window_closed(await alpaca.clock()):
+        log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"entry_window_closed"})); return
     risk_status=await alpaca.risk_status()
     if risk_status.get("blocked"):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"daily_loss_limit","risk":risk_status})); return
@@ -146,13 +131,7 @@ async def maybe_place_paper_order(candidate: dict):
     account=await alpaca.account(); equity=float(account.get("equity",settings.paper_equity))
     qty=position_size(equity,entry,stop)
     if qty<1: return
-    payload={
-        "symbol":symbol,"qty":str(qty),"side":"buy","type":"limit","time_in_force":"day",
-        "limit_price":str(round(entry,2)),"order_class":"bracket",
-        "take_profit":{"limit_price":str(round(target,2))},
-        "stop_loss":{"stop_price":str(round(stop,2))},
-        "client_order_id":f"basel-intel-{symbol.lower()}",
-    }
+    payload=build_bracket_order(symbol,qty,entry,stop,target,source="intel")
     result=await alpaca.submit_order(payload)
     COOLDOWNS[symbol]=datetime.now(timezone.utc)+timedelta(minutes=settings.symbol_cooldown_minutes)
     log_event("smart_paper_order",symbol,json.dumps({

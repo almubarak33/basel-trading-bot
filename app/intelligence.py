@@ -1,6 +1,8 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 
+from .messages import MessageList, render
+
 
 def confidence_label(score: float) -> str:
     if score >= 90: return "A+"
@@ -58,36 +60,35 @@ def enrich_candidate(row: dict) -> dict:
         "risk": round(risk_quality,1),
     }
 
-    bullish=[]; bearish=[]
-    if price > vwap > 0: bullish.append("Price above VWAP")
-    if price > ema9 > ema20 > 0: bullish.append("EMA structure bullish")
-    if rvol >= 3: bullish.append(f"Strong RVOL {rvol:.1f}x")
-    elif rvol >= 2: bullish.append(f"Healthy RVOL {rvol:.1f}x")
-    if x.get("pullback_seen"): bullish.append("Controlled pullback completed")
-    if x.get("reclaim_confirmed"): bullish.append("Reclaim confirmed")
-    if spread <= .25: bullish.append("Tight spread")
+    bullish=MessageList(); bearish=MessageList()
+    if price > vwap > 0: bullish.add("above_vwap")
+    if price > ema9 > ema20 > 0: bullish.add("ema_bullish")
+    if rvol >= 3: bullish.add("strong_rvol", value=f"{rvol:.1f}x")
+    elif rvol >= 2: bullish.add("healthy_rvol", value=f"{rvol:.1f}x")
+    if x.get("pullback_seen"): bullish.add("pullback_done")
+    if x.get("reclaim_confirmed"): bullish.add("reclaim_done")
+    if spread <= .25: bullish.add("tight_spread")
 
-    if ext > 2.5: bearish.append("Overextended above VWAP")
-    if change > 25: bearish.append("Large day move; reversal risk elevated")
-    if spread > .45: bearish.append("Wide spread")
-    if rvol < 2: bearish.append("Weak relative volume")
-    if not x.get("pullback_seen"): bearish.append("No clean pullback yet")
-    if not x.get("reclaim_confirmed"): bearish.append("Reclaim not confirmed")
+    if ext > 2.5: bearish.add("overextended")
+    if change > 25: bearish.add("large_move")
+    if spread > .45: bearish.add("wide_spread")
+    if rvol < 2: bearish.add("weak_rvol")
+    if not x.get("pullback_seen"): bearish.add("no_clean_pullback")
+    if not x.get("reclaim_confirmed"): bearish.add("reclaim_missing")
 
-    x["bull_case"] = bullish
-    x["bear_case"] = bearish
+    x["bull_case"] = bullish.texts()
+    x["bear_case"] = bearish.texts()
+    x["bull_codes"] = bullish.codes
+    x["bear_codes"] = bearish.codes
     if x.get("eligible") and composite >= 85:
-        action="ARM"
-        thesis="High-quality momentum setup. Wait for second confirmation; do not chase."
+        action="ARM"; thesis_code="thesis_arm"
     elif composite >= 75:
-        action="WATCH"
-        thesis="Promising setup, but timing or risk quality is not yet strong enough."
+        action="WATCH"; thesis_code="thesis_watch"
     else:
-        action="AVOID"
-        thesis="Current reward/risk or entry timing does not justify a trade."
-    x["decision"]={"action":action,"thesis":thesis,"confidence":x["grade"]}
-    x["catalyst"]={"status":"UNVERIFIED","headline":None,"note":"News/catalyst provider not connected yet."}
-    x["insider"]={"status":"UNVERIFIED","activity":None,"note":"SEC insider feed not connected yet."}
+        action="AVOID"; thesis_code="thesis_avoid"
+    x["decision"]={"action":action,"thesis":render(thesis_code),"thesis_code":thesis_code,"confidence":x["grade"]}
+    x["catalyst"]={"status":"UNVERIFIED","headline":None,"note":render("catalyst_missing"),"note_code":"catalyst_missing"}
+    x["insider"]={"status":"UNVERIFIED","activity":None,"note":render("insider_missing"),"note_code":"insider_missing"}
     x["updated_at"]=datetime.now(timezone.utc).isoformat()
     return x
 
@@ -96,9 +97,9 @@ def market_brief(status: dict) -> dict:
     regime=status.get("market_regime") or {}
     healthy=int(regime.get("healthy_indexes") or 0)
     if healthy>=2:
-        tone="RISK_ON"; text="SPY and QQQ are supportive of long momentum setups."
+        tone="RISK_ON"; code="brief_risk_on"
     elif healthy==1:
-        tone="MIXED"; text="Broad market confirmation is mixed; demand higher-quality entries."
+        tone="MIXED"; code="brief_mixed"
     else:
-        tone="RISK_OFF"; text="Broad market is not supportive; new long entries should be blocked or rare."
-    return {"tone":tone,"text":text,"regime":regime}
+        tone="RISK_OFF"; code="brief_risk_off"
+    return {"tone":tone,"text":render(code),"text_code":code,"regime":regime}
