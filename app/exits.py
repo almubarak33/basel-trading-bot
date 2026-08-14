@@ -70,7 +70,8 @@ def evaluate_exit(state: PositionState, current: float, bars: list[dict], regime
     if r_high >= cfg.protect_profit_after_r and r_now <= cfg.protected_floor_r:
         return ExitDecision("profit_protection", {"r_high": round(r_high,2), "r_now": round(r_now,2)})
 
-    if not regime.get("longs_allowed", True) and current < state.entry and r_now <= REGIME_EXIT_R:
+    if (cfg.regime_exit_enabled and not regime.get("longs_allowed", True)
+            and current < state.entry and r_now <= REGIME_EXIT_R):
         return ExitDecision("market_regime_risk_off", {"r_now": round(r_now,2)})
 
     if held_minutes >= cfg.max_hold_minutes and r_now < TIME_STOP_MIN_R:

@@ -86,3 +86,13 @@ def test_guard_rate_is_reported():
 def test_report_renders_without_error_on_an_empty_run():
     text = format_report(summarize(result([], [], [])), ["assumption"])
     assert "BACKTEST REPORT" in text and "assumption" in text
+
+
+def test_set_values_coerce_to_the_right_type():
+    """--set x=false must not become the truthy string "false"."""
+    from app.backtest.cli import _coerce
+    assert _coerce("false") is False and _coerce("off") is False
+    assert _coerce("true") is True and _coerce("yes") is True
+    assert _coerce("85") == 85.0
+    assert _coerce("2.5") == 2.5
+    assert _coerce("PULLBACK") == "PULLBACK"

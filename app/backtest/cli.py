@@ -80,7 +80,7 @@ def main(argv=None):
     overrides = {}
     for item in args.set:
         key, _, value = item.partition("=")
-        overrides[key.strip()] = float(value) if _looks_numeric(value) else value.strip()
+        overrides[key.strip()] = _coerce(value)
 
     cfg = BacktestConfig(
         start=start, end=end, symbols=symbols, starting_equity=args.equity,
@@ -100,11 +100,22 @@ def main(argv=None):
     return summary
 
 
-def _looks_numeric(value: str) -> bool:
-    try:
-        float(value); return True
-    except ValueError:
+def _coerce(value: str):
+    """Turn a --set value into the type the setting expects.
+
+    Booleans are handled explicitly: without this, `--set x=false` would pass the
+    string "false", which is truthy, and silently leave the flag on.
+    """
+    text = value.strip()
+    lowered = text.lower()
+    if lowered in {"true", "yes", "on"}:
+        return True
+    if lowered in {"false", "no", "off"}:
         return False
+    try:
+        return float(text)
+    except ValueError:
+        return text
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ class Cfg:
     protect_profit_after_r: float = 1.0
     protected_floor_r: float = 0.15
     max_hold_minutes: int = 90
+    regime_exit_enabled: bool = True
 
 
 NOW = datetime(2024, 3, 4, 15, 0, tzinfo=timezone.utc)
@@ -66,6 +67,12 @@ def test_risk_off_regime_closes_a_losing_position():
 def test_risk_off_regime_leaves_a_winner_alone():
     position = state()
     assert evaluate_exit(position, 10.50, bars(9.5), RISK_OFF, NOW, Cfg()) is None
+
+
+def test_the_regime_exit_can_be_switched_off():
+    """It is the largest single loss source in backtests, so it must be A/B-able."""
+    position = state()
+    assert evaluate_exit(position, 9.90, bars(9.5), RISK_OFF, NOW, Cfg(regime_exit_enabled=False)) is None
 
 
 def test_time_stop_closes_a_stalled_position():

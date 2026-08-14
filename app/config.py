@@ -52,6 +52,9 @@ class Settings:
     auto_manage_positions: bool = as_bool("AUTO_MANAGE_POSITIONS", True)
     manager_interval_seconds: int = int(os.getenv("MANAGER_INTERVAL_SECONDS", "20"))
     thesis_fail_checks: int = int(os.getenv("THESIS_FAIL_CHECKS", "2"))
+    # Close a losing position when SPY/QQQ turn unsupportive. Backtest it off to
+    # measure whether those positions would have recovered.
+    regime_exit_enabled: bool = as_bool("REGIME_EXIT_ENABLED", True)
     protect_profit_after_r: float = float(os.getenv("PROTECT_PROFIT_AFTER_R", "1.0"))
     protected_floor_r: float = float(os.getenv("PROTECTED_FLOOR_R", "0.15"))
     max_hold_minutes: int = int(os.getenv("MAX_HOLD_MINUTES", "90"))
