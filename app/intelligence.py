@@ -20,7 +20,6 @@ def enrich_candidate(row: dict) -> dict:
     ema20 = float(x.get("ema20") or 0)
     rvol = float(x.get("rvol") or 0)
     spread = float(x.get("spread_pct") or 999)
-    score = float(x.get("score") or 0)
     change = float(x.get("change_pct") or 0)
     risk = float(x.get("risk_pct") or 0)
 
@@ -87,7 +86,12 @@ def enrich_candidate(row: dict) -> dict:
     else:
         action="AVOID"; thesis_code="thesis_avoid"
     x["decision"]={"action":action,"thesis":render(thesis_code),"thesis_code":thesis_code,"confidence":x["grade"]}
-    x["catalyst"]={"status":"UNVERIFIED","headline":None,"note":render("catalyst_missing"),"note_code":"catalyst_missing"}
+
+    # Preserve verified/diagnostic catalyst data supplied by the live scanner.
+    # Historical backtests intentionally keep it unavailable until historical
+    # news is replayed point-in-time, avoiding look-ahead bias.
+    if "catalyst" not in x:
+        x["catalyst"]={"status":"UNVERIFIED","headline":None,"note":render("catalyst_missing"),"note_code":"catalyst_missing","execution_gate":False}
     x["insider"]={"status":"UNVERIFIED","activity":None,"note":render("insider_missing"),"note_code":"insider_missing"}
     x["updated_at"]=datetime.now(timezone.utc).isoformat()
     return x
