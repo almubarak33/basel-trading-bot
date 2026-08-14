@@ -1,0 +1,121 @@
+name: Strategy A/B Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+        default: "2024-04-01"
+      end:
+        description: "End date (YYYY-MM-DD)"
+        required: true
+        default: "2024-05-31"
+      limit:
+        description: "Universe size"
+        required: true
+        default: "150"
+      survivors_only:
+        description: "Exclude delisted names (adds survivorship bias)"
+        type: boolean
+        default: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+      - name: Check credentials
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+        run: |
+          test -n "$ALPACA_API_KEY" || (echo "::error::ALPACA_API_KEY secret missing" && exit 1)
+      - name: Build one shared universe
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+        run: |
+          python -m app.backtest.build_universe \
+            --start "${{ inputs.start }}" --end "${{ inputs.end }}" \
+            --limit "${{ inputs.limit }}" \
+            ${{ inputs.survivors_only && '--survivors-only' || '' }} \
+            --out universe.txt
+          echo "UNIVERSE_SIZE=$(wc -l < universe.txt)" >> "$GITHUB_ENV"
+      - name: Baseline
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+        run: |
+          mkdir -p results/baseline
+          python -m app.backtest.cli \
+            --start "${{ inputs.start }}" --end "${{ inputs.end }}" \
+            --symbols-file universe.txt \
+            --json results/baseline/summary.json \
+            2>&1 | tee results/baseline/report.txt
+      - name: No regime exit
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+        run: |
+          mkdir -p results/no-regime-exit
+          python -m app.backtest.cli \
+            --start "${{ inputs.start }}" --end "${{ inputs.end }}" \
+            --symbols-file universe.txt \
+            --set regime_exit_enabled=false \
+            --json results/no-regime-exit/summary.json \
+            2>&1 | tee results/no-regime-exit/report.txt
+      - name: Build side-by-side comparison
+        run: |
+          python - <<'PY' > results/comparison.md
+          import json
+          from pathlib import Path
+          b=json.loads(Path('results/baseline/summary.json').read_text())
+          n=json.loads(Path('results/no-regime-exit/summary.json').read_text())
+          def row(label,path,fmt='{:.2f}'):
+              def get(d):
+                  x=d
+                  for k in path: x=x[k]
+                  return x
+              bv,nv=get(b),get(n)
+              try: delta=nv-bv
+              except TypeError: delta=0
+              return f'| {label} | {fmt.format(bv)} | {fmt.format(nv)} | {delta:+.2f} |'
+          print('## Strategy A/B — Baseline vs No Regime Exit')
+          print('')
+          print('| Metric | Baseline | No regime exit | Δ |')
+          print('|---|---:|---:|---:|')
+          print(row('Total return %',['equity','total_return_pct']))
+          print(row('Max drawdown %',['equity','max_drawdown_pct']))
+          print(row('Sharpe',['equity','sharpe']))
+          print(row('Win rate %',['trades','win_rate_pct']))
+          print(row('Expectancy R',['trades','expectancy_r'],'{:.3f}'))
+          print(row('Profit factor',['trades','profit_factor']))
+          print(row('Trades',['trades','count'],'{:.0f}'))
+          print('')
+          score_b=b['trades']['expectancy_r']*b['trades']['profit_factor']/(1+b['equity']['max_drawdown_pct'])
+          score_n=n['trades']['expectancy_r']*n['trades']['profit_factor']/(1+n['equity']['max_drawdown_pct'])
+          winner='NO REGIME EXIT' if score_n>score_b else 'BASELINE'
+          print(f'**Risk-adjusted provisional winner: {winner}**')
+          print('')
+          print('This is an experiment result, not proof of future profitability. Repeat across multiple non-overlapping periods before changing production defaults.')
+          PY
+          cat results/comparison.md >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.survivors_only }}" = "true" ]; then
+            echo '' >> "$GITHUB_STEP_SUMMARY"
+            echo '> Survivorship bias warning: delisted names were excluded.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload A/B results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ab-suite-${{ inputs.start }}-to-${{ inputs.end }}
+          path: |
+            results/
+            universe.txt
+          retention-days: 30
