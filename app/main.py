@@ -14,8 +14,9 @@ from .strategy import position_size
 from . import engine
 from .optionalpha import trigger_webhook
 from . import simulation
+from .intelligence import enrich_candidate, market_brief
 
-app = FastAPI(title="Basel Trader Mobile", version="0.6.0")
+app = FastAPI(title="Basel Trader Mobile", version="0.7.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 
@@ -52,40 +53,52 @@ async def status():
             "risk_status": {"blocked": False, "drawdown_pct": 0.0, "simulation": True},
         })
         return sim
-
     base={
         "mode":"PAPER" if settings.paper else "BLOCKED",
-        "orders_enabled":settings.enable_orders,
-        "configured":True,
+        "orders_enabled":settings.enable_orders,"configured":True,
         "option_alpha_configured":bool(settings.option_alpha_webhook_url),
-        "option_alpha_enabled":settings.option_alpha_enabled,
-        "kill_switch":KILL_SWITCH,
-        "risk_per_trade_pct":settings.risk_per_trade*100,
-        "max_daily_loss_pct":settings.max_daily_loss*100,
-        "min_score":settings.min_score,
-        "min_rvol":settings.min_rvol,
-        "opening_delay_minutes":settings.opening_delay_minutes,
+        "option_alpha_enabled":settings.option_alpha_enabled,"kill_switch":KILL_SWITCH,
+        "risk_per_trade_pct":settings.risk_per_trade*100,"max_daily_loss_pct":settings.max_daily_loss*100,
+        "min_score":settings.min_score,"min_rvol":settings.min_rvol,"opening_delay_minutes":settings.opening_delay_minutes,
         "engine":engine.state(),
     }
     try:
-        account=await alpaca.account(); clock=await alpaca.clock(); risk=await alpaca.risk_status()
-        base.update({"equity":float(account.get("equity",0)),"buying_power":float(account.get("buying_power",0)),"market_open":bool(clock.get("is_open",False)),"next_open":clock.get("next_open"),"next_close":clock.get("next_close"),"risk_status":risk})
+        account=await alpaca.account(); clock=await alpaca.clock(); risk=await alpaca.risk_status(); regime=await alpaca.market_regime()
+        base.update({"equity":float(account.get("equity",0)),"buying_power":float(account.get("buying_power",0)),"market_open":bool(clock.get("is_open",False)),"next_open":clock.get("next_open"),"next_close":clock.get("next_close"),"risk_status":risk,"market_regime":regime})
     except Exception as e: base["broker_error"]=str(e)
     return base
 
+@app.get("/api/pro/dashboard")
+async def pro_dashboard():
+    s = await status()
+    try:
+        rows = simulation.scan() if not alpaca.configured() else await scan()
+        enriched = [enrich_candidate(r) for r in rows]
+        enriched.sort(key=lambda r:(r.get("decision",{}).get("action")=="ARM",r.get("intel_score",0)), reverse=True)
+        return {
+            "simulation": not alpaca.configured(),
+            "status": s,
+            "market_brief": market_brief(s),
+            "radar": enriched,
+            "top_signal": enriched[0] if enriched else None,
+            "modules": {
+                "smart_radar": True,"smart_map": True,"risk_engine": True,"market_regime": True,
+                "catalyst_feed": False,"insider_sec": False,"paper_execution": alpaca.configured(),
+            },
+        }
+    except Exception as e:
+        raise HTTPException(502, f"Pro dashboard error: {e}")
+
 @app.get("/api/risk-status")
 async def risk_status():
-    if not alpaca.configured():
-        return {"blocked":False,"drawdown_pct":0.0,"simulation":True}
+    if not alpaca.configured(): return {"blocked":False,"drawdown_pct":0.0,"simulation":True}
     return await alpaca.risk_status()
 
 @app.get("/api/scan")
 async def api_scan():
     try:
         if not alpaca.configured():
-            rows = simulation.scan()
-            log_event("simulation_scan",None,json.dumps({"count":len(rows)}))
-            return {"candidates":rows,"simulation":True}
+            rows = simulation.scan(); log_event("simulation_scan",None,json.dumps({"count":len(rows)})); return {"candidates":rows,"simulation":True}
         rows=await scan(); log_event("scan",None,json.dumps({"count":len(rows)})); return {"candidates":rows,"simulation":False}
     except Exception as e: raise HTTPException(502,f"Market data error: {e}")
 
