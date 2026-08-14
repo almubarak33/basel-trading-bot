@@ -1,23 +1,22 @@
 from __future__ import annotations
 import asyncio
 import json
-from datetime import datetime, timezone, timedelta, time
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone, timedelta
 from .alpaca import alpaca
+from .arming import ArmingTracker
 from .config import settings
 from .db import log_event
 from .scanner import scan
+from .session import NY, opening_delay_active
 from .strategy import position_size
 from .intelligence import enrich_candidate
-
-NY = ZoneInfo("America/New_York")
 AUTO_ENABLED = settings.auto_paper_trading
 STOP_REQUESTED = False
 LAST_SCAN = None
 LAST_ERROR = None
 LAST_CANDIDATE = None
 LAST_RISK_STATUS = None
-ARMED: dict[str, dict] = {}
+ARMED = ArmingTracker(lambda kind, symbol, payload: log_event(kind, symbol, json.dumps(payload)))
 COOLDOWNS: dict[str, datetime] = {}
 
 
@@ -36,17 +35,14 @@ def state():
         "last_candidate": LAST_CANDIDATE,
         "last_risk_status": LAST_RISK_STATUS,
         "interval_seconds": settings.scan_interval_seconds,
-        "armed_symbols": list(ARMED.keys()),
+        "armed_symbols": ARMED.symbols(),
         "cooldown_symbols": list(COOLDOWNS.keys()),
         "entry_model": "INTELLIGENCE_ARM + PULLBACK_RECLAIM_2_STAGE",
     }
 
 
 def _opening_delay_active() -> bool:
-    now = datetime.now(NY)
-    open_dt = datetime.combine(now.date(), time(9,30), tzinfo=NY)
-    delay_end = open_dt + timedelta(minutes=settings.opening_delay_minutes)
-    return open_dt <= now < delay_end
+    return opening_delay_active(datetime.now(NY), settings.opening_delay_minutes)
 
 
 def _cooldown_active(symbol: str) -> bool:
@@ -55,28 +51,6 @@ def _cooldown_active(symbol: str) -> bool:
     if datetime.now(timezone.utc) >= until:
         COOLDOWNS.pop(symbol, None); return False
     return True
-
-
-def _arm_or_confirm(candidate: dict) -> bool:
-    symbol = candidate["symbol"].upper(); current = ARMED.get(symbol)
-    if current is None:
-        ARMED[symbol] = {
-            "count":1,
-            "first_price":float(candidate["price"]),
-            "first_score":float(candidate["score"]),
-            "intel_score":float(candidate.get("intel_score") or 0),
-            "grade":candidate.get("grade"),
-        }
-        log_event("setup_armed", symbol, json.dumps(ARMED[symbol])); return False
-    first_price=float(current.get("first_price",candidate["price"])); now_price=float(candidate["price"])
-    if first_price>0 and (now_price/first_price-1)*100>1.0:
-        ARMED.pop(symbol,None); log_event("setup_disarmed",symbol,json.dumps({"reason":"price_ran_away"})); return False
-    current["count"]=int(current.get("count",1))+1
-    current["latest_score"]=float(candidate["score"])
-    current["latest_intel_score"]=float(candidate.get("intel_score") or 0)
-    if current["count"]>=2:
-        ARMED.pop(symbol,None); return True
-    return False
 
 
 async def auto_loop():
@@ -105,15 +79,12 @@ async def auto_loop():
                         LAST_CANDIDATE = eligible[0] if eligible else None
                         log_event("auto_scan", None, json.dumps({"intel_arm_candidates":len(eligible)}))
                         eligible_symbols={r["symbol"].upper() for r in eligible}
-                        for symbol in list(ARMED.keys()):
-                            if symbol not in eligible_symbols:
-                                ARMED.pop(symbol,None)
-                                log_event("setup_disarmed",symbol,json.dumps({"reason":"intel_or_setup_failed_recheck"}))
+                        ARMED.retain_only(eligible_symbols,"intel_or_setup_failed_recheck")
                         if settings.enable_orders:
                             for candidate in eligible[:3]:
                                 symbol=candidate["symbol"].upper()
                                 if _cooldown_active(symbol): continue
-                                if _arm_or_confirm(candidate):
+                                if ARMED.arm_or_confirm(candidate):
                                     await maybe_place_paper_order(candidate); break
         except Exception as e:
             LAST_ERROR=str(e); log_event("auto_error",None,json.dumps({"error":LAST_ERROR}))

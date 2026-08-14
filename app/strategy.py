@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from statistics import mean
 from .config import settings
+from .indicators import num as _num, ema as _ema, vwap as _vwap
 
 @dataclass
 class Candidate:
@@ -31,18 +32,6 @@ class Candidate:
     risk_pct: float
 
 
-def _num(v, default=0.0):
-    try: return float(v)
-    except (TypeError, ValueError): return default
-
-
-def _ema(values: list[float], length: int) -> float:
-    if not values: return 0.0
-    k = 2 / (length + 1); result = values[0]
-    for v in values[1:]: result = v * k + result * (1-k)
-    return result
-
-
 def _atr(bars: list[dict], length: int = 14) -> float:
     if len(bars) < 2: return 0.0
     trs=[]; prev_close=_num(bars[0].get("c"))
@@ -50,16 +39,6 @@ def _atr(bars: list[dict], length: int = 14) -> float:
         high,low,close=_num(b.get("h")),_num(b.get("l")),_num(b.get("c"))
         trs.append(max(high-low,abs(high-prev_close),abs(low-prev_close))); prev_close=close
     return mean(trs[-length:]) if trs else 0.0
-
-
-def _vwap(bars: list[dict]) -> float:
-    pv=vol=0.0
-    for b in bars:
-        v=_num(b.get("v"))
-        if v<=0: continue
-        typical=(_num(b.get("h"))+_num(b.get("l"))+_num(b.get("c")))/3
-        pv += typical*v; vol += v
-    return pv/vol if vol else 0.0
 
 
 def build_candidate(symbol: str, change_pct: float, volume_rank: int, snapshot: dict, bars: list[dict], avg_daily_volume: float = 0.0, session_fraction: float = 1.0) -> Candidate:

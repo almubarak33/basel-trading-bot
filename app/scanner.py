@@ -1,22 +1,41 @@
 from __future__ import annotations
 from dataclasses import asdict
-from datetime import datetime, time
+from datetime import datetime
 from statistics import mean
-from zoneinfo import ZoneInfo
 from .alpaca import alpaca
 from .config import settings
+from .session import NY, session_fraction
 from .strategy import build_candidate
 
-NY = ZoneInfo("America/New_York")
 
+def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_map: dict[str, int],
+                        snapshots: dict[str, dict], bars_map: dict[str, list[dict]],
+                        daily_map: dict[str, list[dict]], regime: dict, fraction: float) -> list[dict]:
+    """Turn raw market data into ranked candidate rows.
 
-def _session_fraction() -> float:
-    now = datetime.now(NY)
-    open_dt = datetime.combine(now.date(), time(9,30), tzinfo=NY)
-    close_dt = datetime.combine(now.date(), time(16,0), tzinfo=NY)
-    if now <= open_dt: return 0.05
-    if now >= close_dt: return 1.0
-    return max(0.05, min(1.0, (now-open_dt).total_seconds()/(close_dt-open_dt).total_seconds()))
+    Pure function: the live scanner feeds it broker data, the backtester feeds it
+    replayed historical data, so both exercise identical selection logic.
+    """
+    output = []
+    for s in symbols:
+        hist = daily_map.get(s, [])
+        vols = [float(b.get("v") or 0) for b in hist[-20:] if float(b.get("v") or 0) > 0]
+        avg_daily = mean(vols) if vols else 0.0
+        candidate = build_candidate(
+            s, change_map.get(s, 0.0), rank_map.get(s, settings.screener_top+1),
+            snapshots.get(s, {}), bars_map.get(s, []), avg_daily_volume=avg_daily, session_fraction=fraction
+        )
+        row = asdict(candidate)
+        row["market_regime"] = regime
+        row["session_fraction"] = round(fraction, 3)
+        row["avg_daily_volume_20d"] = round(avg_daily, 0)
+        if row["eligible"] and not regime.get("longs_allowed", False):
+            row["eligible"] = False
+            row["reject_reasons"].append("Market regime block: SPY/QQQ not supportive")
+        output.append(row)
+    output.sort(key=lambda x: (x["eligible"], x["score"], x.get("rvol", 0), -abs(x["vwap_extension_pct"])), reverse=True)
+    return output
+
 
 async def scan():
     regime = await alpaca.market_regime()
@@ -41,24 +60,6 @@ async def scan():
     snapmap=snapshots.get("snapshots",snapshots)
     bars_map=await alpaca.intraday_bars(symbols,minutes=300)
     daily_map=await alpaca.daily_bars(symbols,days=20)
-    fraction=_session_fraction()
 
-    output=[]
-    for s in symbols:
-        hist=daily_map.get(s,[])
-        vols=[float(b.get("v") or 0) for b in hist[-20:] if float(b.get("v") or 0)>0]
-        avg_daily=mean(vols) if vols else 0.0
-        candidate=build_candidate(
-            s,change_map.get(s,0.0),active_rank.get(s,settings.screener_top+1),
-            snapmap.get(s,{}),bars_map.get(s,[]),avg_daily_volume=avg_daily,session_fraction=fraction
-        )
-        row=asdict(candidate)
-        row["market_regime"]=regime
-        row["session_fraction"]=round(fraction,3)
-        row["avg_daily_volume_20d"]=round(avg_daily,0)
-        if row["eligible"] and not regime.get("longs_allowed",False):
-            row["eligible"]=False
-            row["reject_reasons"].append("Market regime block: SPY/QQQ not supportive")
-        output.append(row)
-    output.sort(key=lambda x:(x["eligible"],x["score"],x.get("rvol",0),-abs(x["vwap_extension_pct"])),reverse=True)
-    return output
+    return assemble_candidates(symbols, change_map, active_rank, snapmap, bars_map, daily_map,
+                               regime, session_fraction(datetime.now(NY)))
