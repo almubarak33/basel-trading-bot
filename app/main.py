@@ -13,8 +13,9 @@ from .scanner import scan
 from .strategy import position_size
 from . import engine
 from .optionalpha import trigger_webhook
+from . import simulation
 
-app = FastAPI(title="Basel Trader Mobile", version="0.5.0")
+app = FastAPI(title="Basel Trader Mobile", version="0.6.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 
@@ -35,10 +36,27 @@ def home():
 
 @app.get("/api/status")
 async def status():
+    if not alpaca.configured():
+        sim = simulation.status()
+        sim.update({
+            "orders_enabled": False,
+            "option_alpha_configured": bool(settings.option_alpha_webhook_url),
+            "option_alpha_enabled": settings.option_alpha_enabled,
+            "kill_switch": KILL_SWITCH,
+            "risk_per_trade_pct": settings.risk_per_trade * 100,
+            "max_daily_loss_pct": settings.max_daily_loss * 100,
+            "min_score": settings.min_score,
+            "min_rvol": settings.min_rvol,
+            "opening_delay_minutes": settings.opening_delay_minutes,
+            "engine": engine.state(),
+            "risk_status": {"blocked": False, "drawdown_pct": 0.0, "simulation": True},
+        })
+        return sim
+
     base={
         "mode":"PAPER" if settings.paper else "BLOCKED",
         "orders_enabled":settings.enable_orders,
-        "configured":alpaca.configured(),
+        "configured":True,
         "option_alpha_configured":bool(settings.option_alpha_webhook_url),
         "option_alpha_enabled":settings.option_alpha_enabled,
         "kill_switch":KILL_SWITCH,
@@ -49,7 +67,6 @@ async def status():
         "opening_delay_minutes":settings.opening_delay_minutes,
         "engine":engine.state(),
     }
-    if not alpaca.configured(): return base
     try:
         account=await alpaca.account(); clock=await alpaca.clock(); risk=await alpaca.risk_status()
         base.update({"equity":float(account.get("equity",0)),"buying_power":float(account.get("buying_power",0)),"market_open":bool(clock.get("is_open",False)),"next_open":clock.get("next_open"),"next_close":clock.get("next_close"),"risk_status":risk})
@@ -58,14 +75,18 @@ async def status():
 
 @app.get("/api/risk-status")
 async def risk_status():
-    if not alpaca.configured(): raise HTTPException(400,"Add Alpaca PAPER API keys first.")
+    if not alpaca.configured():
+        return {"blocked":False,"drawdown_pct":0.0,"simulation":True}
     return await alpaca.risk_status()
 
 @app.get("/api/scan")
 async def api_scan():
-    if not alpaca.configured(): raise HTTPException(400,"Add Alpaca PAPER API keys first.")
     try:
-        rows=await scan(); log_event("scan",None,json.dumps({"count":len(rows)})); return {"candidates":rows}
+        if not alpaca.configured():
+            rows = simulation.scan()
+            log_event("simulation_scan",None,json.dumps({"count":len(rows)}))
+            return {"candidates":rows,"simulation":True}
+        rows=await scan(); log_event("scan",None,json.dumps({"count":len(rows)})); return {"candidates":rows,"simulation":False}
     except Exception as e: raise HTTPException(502,f"Market data error: {e}")
 
 @app.get("/api/trades")
@@ -93,6 +114,7 @@ def kill_switch(enabled: bool=True):
 
 @app.post("/api/paper/order")
 async def paper_order(req: OrderRequest):
+    if not alpaca.configured(): raise HTTPException(403,"Simulation mode only. Connect Alpaca PAPER before sending broker orders.")
     if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON.")
     if not settings.paper: raise HTTPException(403,"Live trading is disabled.")
     if not settings.enable_orders: raise HTTPException(403,"Paper orders are disabled.")
