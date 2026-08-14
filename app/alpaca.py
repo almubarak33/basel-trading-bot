@@ -11,7 +11,6 @@ STOP_ORDER_TYPES = {"stop", "stop_limit", "trailing_stop"}
 
 
 def extract_stop_prices(orders: list[dict]) -> dict[str, float]:
-    """Map symbol -> working stop price, reading bracket legs as well as top-level orders."""
     stops: dict[str, float] = {}
     def visit(order: dict) -> None:
         for leg in order.get("legs") or []: visit(leg)
@@ -44,8 +43,7 @@ class Alpaca:
             r=await c.delete(url,headers=self.headers,params=params); r.raise_for_status()
             if not r.content: return {"ok":True}
             try: return r.json()
-            except Exception: return {"ok":True,"text":r.text
-            }
+            except Exception: return {"ok":True,"text":r.text}
 
     async def movers(self,top:int): return await self._get(f"{DATA}/v1beta1/screener/stocks/movers",{"top":min(top,50)})
     async def most_actives(self,top:int): return await self._get(f"{DATA}/v1beta1/screener/stocks/most-actives",{"top":min(top,100),"by":"volume"})
@@ -65,15 +63,11 @@ class Alpaca:
         return payload.get("trades", payload)
 
     async def news(self, symbols:list[str], hours:int=24, limit:int=50):
-        """Return recent Alpaca news grouped by symbol."""
         if not symbols:return {}
         start=datetime.now(timezone.utc)-timedelta(hours=max(1,hours))
         payload=await self._get(f"{DATA}/v1beta1/news",{
-            "symbols":",".join(symbols),
-            "start":start.isoformat().replace("+00:00","Z"),
-            "sort":"desc",
-            "limit":min(max(limit,1),50),
-            "include_content":"false",
+            "symbols":",".join(symbols),"start":start.isoformat().replace("+00:00","Z"),
+            "sort":"desc","limit":min(max(limit,1),50),"include_content":"false",
         })
         articles=payload.get("news", payload if isinstance(payload,list) else [])
         grouped={s:[] for s in symbols}
@@ -101,6 +95,7 @@ class Alpaca:
 
     async def account(self): return await self._get(f"{PAPER}/v2/account")
     async def positions(self): return await self._get(f"{PAPER}/v2/positions")
+    async def position(self,symbol:str): return await self._get(f"{PAPER}/v2/positions/{symbol.upper()}")
     async def open_orders(self): return await self._get(f"{PAPER}/v2/orders",{"status":"open","nested":"true","limit":500})
     async def clock(self): return await self._get(f"{PAPER}/v2/clock")
 
