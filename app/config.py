@@ -11,11 +11,12 @@ def as_bool(name: str, default: bool = False) -> bool:
 class Settings:
     api_key: str = os.getenv("ALPACA_API_KEY", "")
     api_secret: str = os.getenv("ALPACA_API_SECRET", "")
-    # Shared secret for the dashboard/API. Generated per-process when unset.
     api_token: str = os.getenv("API_TOKEN", "")
     paper: bool = as_bool("ALPACA_PAPER", True)
-    enable_orders: bool = as_bool("ENABLE_PAPER_ORDERS", False)
-    auto_paper_trading: bool = as_bool("AUTO_PAPER_TRADING", False)
+    # PAPER execution is enabled by default. Live trading remains blocked by the
+    # explicit paper check throughout the order path.
+    enable_orders: bool = as_bool("ENABLE_PAPER_ORDERS", True)
+    auto_paper_trading: bool = as_bool("AUTO_PAPER_TRADING", True)
     scan_interval_seconds: int = int(os.getenv("SCAN_INTERVAL_SECONDS", "60"))
 
     option_alpha_webhook_url: str = os.getenv("OPTION_ALPHA_WEBHOOK_URL", "")
@@ -41,6 +42,8 @@ class Settings:
     min_bars: int = int(os.getenv("MIN_INTRADAY_BARS", "25"))
     min_stop_pct: float = float(os.getenv("MIN_STOP_PCT", "0.8"))
     max_stop_pct: float = float(os.getenv("MAX_STOP_PCT", "4.0"))
+    # Kept as an informational 2R reference on the UI/backtest reports. Runner
+    # mode does not submit this as a hard take-profit to the broker.
     reward_r_multiple: float = float(os.getenv("REWARD_R_MULTIPLE", "2.0"))
     symbol_cooldown_minutes: int = int(os.getenv("SYMBOL_COOLDOWN_MINUTES", "30"))
 
@@ -52,16 +55,18 @@ class Settings:
     auto_manage_positions: bool = as_bool("AUTO_MANAGE_POSITIONS", True)
     manager_interval_seconds: int = int(os.getenv("MANAGER_INTERVAL_SECONDS", "20"))
     thesis_fail_checks: int = int(os.getenv("THESIS_FAIL_CHECKS", "2"))
-    # Close a losing position when SPY/QQQ turn unsupportive. Backtest it off to
-    # measure whether those positions would have recovered.
     regime_exit_enabled: bool = as_bool("REGIME_EXIT_ENABLED", True)
+    runner_mode: bool = as_bool("RUNNER_MODE", True)
+    runner_activate_r: float = float(os.getenv("RUNNER_ACTIVATE_R", "2.0"))
+    runner_giveback_fraction: float = float(os.getenv("RUNNER_GIVEBACK_FRACTION", "0.35"))
+    runner_min_lock_r: float = float(os.getenv("RUNNER_MIN_LOCK_R", "1.0"))
     protect_profit_after_r: float = float(os.getenv("PROTECT_PROFIT_AFTER_R", "1.0"))
     protected_floor_r: float = float(os.getenv("PROTECTED_FLOOR_R", "0.15"))
     max_hold_minutes: int = int(os.getenv("MAX_HOLD_MINUTES", "90"))
     close_on_daily_guard: bool = as_bool("CLOSE_ON_DAILY_GUARD", True)
 
-    # End of day. Bracket legs are day orders, so anything still open when they
-    # expire carries overnight unprotected. Disabling the flatten accepts that.
+    # End of day. Stop legs are day orders in the current PAPER implementation,
+    # so anything still open near the bell is flattened intentionally.
     eod_flatten_enabled: bool = as_bool("EOD_FLATTEN_ENABLED", True)
     eod_flatten_minutes: int = int(os.getenv("EOD_FLATTEN_MINUTES_BEFORE_CLOSE", "10"))
     no_entry_minutes_before_close: int = int(os.getenv("NO_ENTRY_MINUTES_BEFORE_CLOSE", "30"))
