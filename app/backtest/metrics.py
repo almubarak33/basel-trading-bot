@@ -28,6 +28,12 @@ def _sharpe(daily_returns: list[float]) -> float:
     return _safe_div(avg,sd)*math.sqrt(TRADING_DAYS_PER_YEAR) if sd else 0.0
 
 
+def _annualized(total_return_pct: float, sessions: int) -> float:
+    if sessions <= 0 or total_return_pct <= -100: return 0.0
+    growth = 1 + total_return_pct / 100
+    return (growth ** (TRADING_DAYS_PER_YEAR / sessions) - 1) * 100
+
+
 def _bucket(trades,key)->dict:
     grouped=defaultdict(list)
     for trade in trades: grouped[key(trade)].append(trade)
@@ -55,9 +61,23 @@ def summarize(result: BacktestResult)->dict:
         previous=equity
     wins=[t for t in trades if t.pnl>0]; losses=[t for t in trades if t.pnl<=0]
     gross_win=sum(t.pnl for t in wins); gross_loss=abs(sum(t.pnl for t in losses)); r_values=[t.r_multiple for t in trades]
+    bot_return=round(_safe_div(ending_equity-result.starting_equity,result.starting_equity)*100,2)
+    benchmarks={}
+    for symbol, stats in (result.benchmarks or {}).items():
+        item=dict(stats)
+        if item.get("available"):
+            ret=float(item.get("total_return_pct") or 0)
+            item["alpha_pct"]=round(bot_return-ret,2)
+            item["annualized_return_pct"]=round(_annualized(ret,result.sessions),2)
+        benchmarks[symbol]=item
+    available=[b for b in benchmarks.values() if b.get("available")]
+    best_benchmark=max((float(b.get("total_return_pct") or 0) for b in available), default=0.0)
+    benchmark_pass=bool(available) and bot_return>best_benchmark
     return {
         "period":{"sessions":result.sessions,"first_day":str(result.daily_equity[0][0]) if result.daily_equity else None,"last_day":str(result.daily_equity[-1][0]) if result.daily_equity else None},
-        "equity":{"starting":round(result.starting_equity,2),"ending":round(ending_equity,2),"total_return_pct":round(_safe_div(ending_equity-result.starting_equity,result.starting_equity)*100,2),"max_drawdown_pct":round(_drawdown([p.equity for p in result.equity_curve]),2),"sharpe":round(_sharpe(daily_returns),2)},
+        "equity":{"starting":round(result.starting_equity,2),"ending":round(ending_equity,2),"total_return_pct":bot_return,"annualized_return_pct":round(_annualized(bot_return,result.sessions),2),"max_drawdown_pct":round(_drawdown([p.equity for p in result.equity_curve]),2),"sharpe":round(_sharpe(daily_returns),2)},
+        "benchmarks":benchmarks,
+        "benchmark_test":{"beats_all":benchmark_pass,"best_benchmark_return_pct":round(best_benchmark,2),"alpha_vs_best_pct":round(bot_return-best_benchmark,2)},
         "trades":{"count":len(trades),"orders_placed":result.orders_placed,"orders_never_filled":result.orders_cancelled,"fill_rate_pct":round(_safe_div(len(trades),result.orders_placed)*100,1),"trades_per_session":round(_safe_div(len(trades),result.sessions),2),"win_rate_pct":round(_safe_div(len(wins),len(trades))*100,1),"avg_r":round(_safe_div(sum(r_values),len(r_values)),3),"expectancy_r":round(_safe_div(sum(r_values),len(r_values)),3),"avg_win_r":round(_safe_div(sum(t.r_multiple for t in wins),len(wins)),3),"avg_loss_r":round(_safe_div(sum(t.r_multiple for t in losses),len(losses)),3),"best_r":round(max(r_values),3) if r_values else 0.0,"worst_r":round(min(r_values),3) if r_values else 0.0,"profit_factor":round(_safe_div(gross_win,gross_loss,float("inf") if gross_win else 0.0),2)},
         "risk":{"daily_loss_guard_days":result.guard_days,"guard_rate_pct":round(_safe_div(result.guard_days,result.sessions)*100,1)},
         "by_exit_reason":_bucket(trades,lambda t:t.reason),
@@ -70,7 +90,20 @@ def summarize(result: BacktestResult)->dict:
 
 def format_report(summary:dict,config_notes:list[str]|None=None)->str:
     equity=summary["equity"]; trades=summary["trades"]; period=summary["period"]
-    lines=["="*62,"  BACKTEST REPORT","="*62,f"  Sessions          {period['sessions']}  ({period['first_day']} → {period['last_day']})","","  EQUITY",f"    Start / End     ${equity['starting']:,.2f} → ${equity['ending']:,.2f}",f"    Total return    {equity['total_return_pct']:+.2f}%",f"    Max drawdown    {equity['max_drawdown_pct']:.2f}%",f"    Sharpe          {equity['sharpe']:.2f}","","  TRADES",f"    Orders placed   {trades['orders_placed']}  (filled {trades['count']}, {trades['fill_rate_pct']}%)",f"    Per session     {trades['trades_per_session']}",f"    Win rate        {trades['win_rate_pct']:.1f}%",f"    Expectancy      {trades['expectancy_r']:+.3f} R",f"    Avg win / loss  {trades['avg_win_r']:+.2f} R / {trades['avg_loss_r']:+.2f} R",f"    Best / worst    {trades['best_r']:+.2f} R / {trades['worst_r']:+.2f} R",f"    Profit factor   {trades['profit_factor']}","",f"  RISK    daily-loss-guard hit on {summary['risk']['daily_loss_guard_days']} day(s) ({summary['risk']['guard_rate_pct']}%)"]
+    lines=["="*62,"  BACKTEST REPORT","="*62,f"  Sessions          {period['sessions']}  ({period['first_day']} → {period['last_day']})","","  EQUITY",f"    Start / End     ${equity['starting']:,.2f} → ${equity['ending']:,.2f}",f"    Total return    {equity['total_return_pct']:+.2f}%",f"    Annualized*     {equity['annualized_return_pct']:+.2f}%",f"    Max drawdown    {equity['max_drawdown_pct']:.2f}%",f"    Sharpe          {equity['sharpe']:.2f}"]
+    benches=summary.get("benchmarks") or {}
+    if benches:
+        lines += ["","  BENCHMARKS — SAME TEST WINDOW"]
+        for symbol in ("SPY","QQQ"):
+            b=benches.get(symbol) or {}
+            if b.get("available"):
+                lines.append(f"    {symbol:<5} buy & hold   {b['total_return_pct']:+.2f}%   alpha {b['alpha_pct']:+.2f}%")
+            else:
+                lines.append(f"    {symbol:<5} unavailable")
+        gate=summary.get("benchmark_test") or {}
+        verdict="PASS" if gate.get("beats_all") else "FAIL"
+        lines.append(f"    Alpha hurdle     {verdict}   vs best benchmark {gate.get('alpha_vs_best_pct',0):+.2f}%")
+    lines += ["","  TRADES",f"    Orders placed   {trades['orders_placed']}  (filled {trades['count']}, {trades['fill_rate_pct']}%)",f"    Per session     {trades['trades_per_session']}",f"    Win rate        {trades['win_rate_pct']:.1f}%",f"    Expectancy      {trades['expectancy_r']:+.3f} R",f"    Avg win / loss  {trades['avg_win_r']:+.2f} R / {trades['avg_loss_r']:+.2f} R",f"    Best / worst    {trades['best_r']:+.2f} R / {trades['worst_r']:+.2f} R",f"    Profit factor   {trades['profit_factor']}","",f"  RISK    daily-loss-guard hit on {summary['risk']['daily_loss_guard_days']} day(s) ({summary['risk']['guard_rate_pct']}%)"]
     for title,key in (("EXITS","by_exit_reason"),("BY GRADE","by_grade"),("BY STRATEGY FAMILY","by_strategy"),("BY ENTRY HOUR","by_entry_hour")):
         rows=summary.get(key) or {}
         if not rows:continue
@@ -83,5 +116,5 @@ def format_report(summary:dict,config_notes:list[str]|None=None)->str:
         for reason,count in rejects.items(): lines.append(f"    {reason:<46} {count:>8,}")
     if config_notes:
         lines += ["","  MODELLING ASSUMPTIONS"]+[f"    - {note}" for note in config_notes]
-    lines.append("="*62)
+    lines += ["","  * Annualized is extrapolated from the tested sessions; it is not a forecast.","="*62]
     return "\n".join(lines)
