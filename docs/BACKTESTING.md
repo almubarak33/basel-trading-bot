@@ -27,8 +27,16 @@ python -m app.backtest.cli \
 python -m app.backtest.cli --load data/q1.json
 ```
 
-`universe.txt` is one symbol per line. Choose it carefully — see *Survivorship*
-below.
+`universe.txt` is one symbol per line. Build it with the companion command
+rather than by hand:
+
+```bash
+python -m app.backtest.build_universe --start 2024-01-02 --end 2024-03-28 --out universe.txt
+```
+
+It pulls Alpaca's asset list, keeps names that were inside the price band with
+real dollar volume during the window, and — importantly — keeps delisted ones.
+See *Survivorship* below for why that matters.
 
 ### Useful flags
 
@@ -87,10 +95,18 @@ before the one being traded. `tests/test_universe.py` covers each of these.
 
 ## Survivorship
 
-The universe is whatever you pass in. Building it from today's liquid names
-imports a large survivorship bias — the delisted and the collapsed are exactly
-what a low-priced momentum strategy runs into. For a defensible result, source
-the symbol list from a point-in-time constituent snapshot.
+Building a universe from today's liquid names imports a large survivorship
+bias: the delisted and the collapsed are exactly what a low-priced momentum
+strategy runs into, and dropping them makes any result look better than reality.
+
+`build_universe` keeps inactive (delisted) assets by default for that reason.
+`--survivors-only` turns them off and prints a warning; use it only to measure
+how large the bias is, never for a result you intend to trust.
+
+The remaining bias is that liquidity is measured over the backtest window
+itself. That selects names tradeable *during* the period rather than names that
+performed well in it, so it does not leak returns — but a symbol that only
+became liquid late in the window is still in the universe from day one.
 
 ## Tests
 
