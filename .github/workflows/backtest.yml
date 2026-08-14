@@ -1,0 +1,107 @@
+name: Backtest
+
+# Runs the strategy replay on GitHub's machines so it can be launched from a
+# phone: open Actions -> Backtest -> Run workflow. The report is written to the
+# run summary, which is readable on mobile without downloading anything.
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+        default: "2024-04-01"
+      end:
+        description: "End date (YYYY-MM-DD) — must be before today"
+        required: true
+        default: "2024-05-31"
+      limit:
+        description: "Universe size (most liquid N). Larger = slower and more memory."
+        required: true
+        default: "150"
+      overrides:
+        description: "Strategy overrides, space separated, e.g. --set min_score=80"
+        required: false
+        default: ""
+      survivors_only:
+        description: "Exclude delisted names (introduces survivorship bias)"
+        type: boolean
+        default: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+
+      - name: Check credentials are configured
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+        run: |
+          if [ -z "$ALPACA_API_KEY" ]; then
+            echo "::error::ALPACA_API_KEY secret is not set. Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "Credentials present."
+
+      - name: Build universe
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+        run: |
+          python -m app.backtest.build_universe \
+            --start "${{ inputs.start }}" --end "${{ inputs.end }}" \
+            --limit "${{ inputs.limit }}" \
+            ${{ inputs.survivors_only && '--survivors-only' || '' }} \
+            --out universe.txt
+          echo "UNIVERSE_SIZE=$(wc -l < universe.txt)" >> "$GITHUB_ENV"
+
+      - name: Run backtest
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+        run: |
+          mkdir -p results
+          python -m app.backtest.cli \
+            --start "${{ inputs.start }}" --end "${{ inputs.end }}" \
+            --symbols-file universe.txt \
+            --json results/summary.json \
+            ${{ inputs.overrides }} \
+            2>&1 | tee results/report.txt
+
+      - name: Publish report to the run summary
+        if: always()
+        run: |
+          {
+            echo "## Backtest ${{ inputs.start }} → ${{ inputs.end }}"
+            echo ""
+            echo "Universe: ${UNIVERSE_SIZE:-?} symbols"
+            if [ "${{ inputs.survivors_only }}" = "true" ]; then
+              echo ""
+              echo "> **Survivorship bias:** delisted names were excluded, so these"
+              echo "> numbers are better than reality."
+            fi
+            echo ""
+            echo '```'
+            # The progress lines are noise on a phone; keep the report itself.
+            grep -v '^  …' results/report.txt 2>/dev/null || echo "No report produced."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-${{ inputs.start }}-to-${{ inputs.end }}
+          path: |
+            results/
+            universe.txt
+          retention-days: 30
