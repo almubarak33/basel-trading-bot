@@ -46,4 +46,13 @@ class Settings:
     min_rvol: float = float(os.getenv("MIN_RVOL", "2.0"))
     opening_delay_minutes: int = int(os.getenv("OPENING_DELAY_MINUTES", "10"))
 
+    # Autonomous trade management (PAPER only)
+    auto_manage_positions: bool = as_bool("AUTO_MANAGE_POSITIONS", True)
+    manager_interval_seconds: int = int(os.getenv("MANAGER_INTERVAL_SECONDS", "20"))
+    thesis_fail_checks: int = int(os.getenv("THESIS_FAIL_CHECKS", "2"))
+    protect_profit_after_r: float = float(os.getenv("PROTECT_PROFIT_AFTER_R", "1.0"))
+    protected_floor_r: float = float(os.getenv("PROTECTED_FLOOR_R", "0.15"))
+    max_hold_minutes: int = int(os.getenv("MAX_HOLD_MINUTES", "90"))
+    close_on_daily_guard: bool = as_bool("CLOSE_ON_DAILY_GUARD", True)
+
 settings = Settings()
