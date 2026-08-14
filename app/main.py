@@ -12,8 +12,9 @@ from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
 from . import engine
+from .optionalpha import trigger_webhook
 
-app = FastAPI(title="Basel Trader Mobile", version="0.3.0")
+app = FastAPI(title="Basel Trader Mobile", version="0.4.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 
@@ -38,6 +39,8 @@ async def status():
         "mode": "PAPER" if settings.paper else "BLOCKED",
         "orders_enabled": settings.enable_orders,
         "configured": alpaca.configured(),
+        "option_alpha_configured": bool(settings.option_alpha_webhook_url),
+        "option_alpha_enabled": settings.option_alpha_enabled,
         "kill_switch": KILL_SWITCH,
         "risk_per_trade_pct": settings.risk_per_trade * 100,
         "max_daily_loss_pct": settings.max_daily_loss * 100,
@@ -74,6 +77,17 @@ async def api_scan():
 @app.get("/api/trades")
 def trades():
     return {"events": recent_events()}
+
+@app.post("/api/optionalpha/test")
+async def optionalpha_test():
+    if KILL_SWITCH:
+        raise HTTPException(423, "Kill switch is ON.")
+    try:
+        result = await trigger_webhook()
+        log_event("optionalpha_webhook", None, json.dumps(result))
+        return result
+    except Exception as e:
+        raise HTTPException(502, f"Option Alpha webhook error: {e}")
 
 @app.post("/api/auto")
 def auto(enabled: bool):
