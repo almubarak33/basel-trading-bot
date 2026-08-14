@@ -19,6 +19,9 @@ LAST_CANDIDATE = None
 LAST_RISK_STATUS = None
 ARMED = ArmingTracker(lambda kind, symbol, payload: log_event(kind, symbol, json.dumps(payload)))
 COOLDOWNS: dict[str, datetime] = {}
+# لماذا لم يدخل المحرك صفقة في آخر دورة. كل بوابة كانت تخرج بصمت، فيبدو
+# التوقف والعطل متطابقين من الخارج.
+IDLE_REASON = "starting"
 
 def set_auto(enabled: bool):
     global AUTO_ENABLED
@@ -27,7 +30,7 @@ def set_auto(enabled: bool):
     return AUTO_ENABLED
 
 def state():
-    return {"auto_enabled":AUTO_ENABLED,"last_scan":LAST_SCAN,"last_error":LAST_ERROR,
+    return {"auto_enabled":AUTO_ENABLED,"idle_reason":IDLE_REASON,"last_scan":LAST_SCAN,"last_error":LAST_ERROR,
         "last_candidate":LAST_CANDIDATE,"last_risk_status":LAST_RISK_STATUS,
         "interval_seconds":settings.scan_interval_seconds,"armed_symbols":ARMED.symbols(),
         "cooldown_symbols":list(COOLDOWNS.keys()),
@@ -48,19 +51,25 @@ def _cooldown_active(symbol: str) -> bool:
     return True
 
 async def auto_loop():
-    global LAST_SCAN,LAST_ERROR,LAST_CANDIDATE,LAST_RISK_STATUS,AUTO_ENABLED
+    global LAST_SCAN,LAST_ERROR,LAST_CANDIDATE,LAST_RISK_STATUS,AUTO_ENABLED,IDLE_REASON
     while not STOP_REQUESTED:
         try:
+            if not AUTO_ENABLED: IDLE_REASON="auto_disabled"
+            elif not settings.paper: IDLE_REASON="live_blocked"
+            elif not alpaca.configured(): IDLE_REASON="not_configured"
             if AUTO_ENABLED and settings.paper and alpaca.configured():
                 clock=await alpaca.clock()
+                if not clock.get("is_open",False): IDLE_REASON="market_closed"
                 if clock.get("is_open",False):
                     LAST_RISK_STATUS=await alpaca.risk_status()
                     if LAST_RISK_STATUS.get("blocked"):
+                        IDLE_REASON="daily_loss_guard"
                         AUTO_ENABLED=False; ARMED.clear(); log_event("daily_loss_guard",None,json.dumps(LAST_RISK_STATUS))
                     elif _opening_delay_active():
+                        IDLE_REASON="opening_delay"
                         log_event("opening_delay",None,json.dumps({"minutes":settings.opening_delay_minutes}))
                     elif _entry_window_closed(clock):
-                        ARMED.clear()
+                        IDLE_REASON="entry_window_closed"; ARMED.clear()
                     else:
                         raw_rows=await scan(); rows=[enrich_candidate(r) for r in raw_rows]
                         LAST_SCAN=datetime.now(timezone.utc).isoformat()
@@ -69,6 +78,10 @@ async def auto_loop():
                         LAST_CANDIDATE=eligible[0] if eligible else None
                         log_event("auto_scan",None,json.dumps({"intel_arm_candidates":len(eligible)}))
                         ARMED.retain_only({r["symbol"].upper() for r in eligible},"intel_or_setup_failed_recheck")
+                        if not eligible: IDLE_REASON="no_arm_candidates"
+                        elif not settings.enable_orders: IDLE_REASON="orders_disabled"
+                        elif not ARMED.symbols(): IDLE_REASON="awaiting_confirmation"
+                        else: IDLE_REASON="working"
                         if settings.enable_orders:
                             for candidate in eligible[:3]:
                                 symbol=candidate["symbol"].upper()
@@ -76,7 +89,8 @@ async def auto_loop():
                                 if ARMED.arm_or_confirm(candidate):
                                     await maybe_place_paper_order(candidate); break
         except Exception as e:
-            LAST_ERROR=str(e); log_event("auto_error",None,json.dumps({"error":LAST_ERROR}))
+            LAST_ERROR=str(e); IDLE_REASON="error"
+            log_event("auto_error",None,json.dumps({"error":LAST_ERROR}))
         await asyncio.sleep(settings.scan_interval_seconds)
 
 async def maybe_place_paper_order(candidate: dict):

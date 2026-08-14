@@ -147,6 +147,21 @@ MESSAGES: dict[str, dict[str, str]] = {
     "module_paper_execution": {"en": "paper execution", "ar": "التنفيذ التجريبي"},
     "module_autonomous_entry": {"en": "autonomous entry", "ar": "دخول تلقائي"},
     "module_autonomous_exit": {"en": "autonomous exit", "ar": "خروج تلقائي"},
+    # ---- لماذا لا يتداول المحرك ----------------------------------------
+    "idle_starting": {"en": "Starting up", "ar": "جاري الإقلاع"},
+    "idle_auto_disabled": {"en": "Auto trading is off", "ar": "التداول التلقائي متوقف"},
+    "idle_live_blocked": {"en": "Live trading is blocked", "ar": "التداول الحقيقي محظور"},
+    "idle_not_configured": {"en": "Broker keys are not configured", "ar": "مفاتيح الوسيط غير مضبوطة"},
+    "idle_market_closed": {"en": "Market is closed", "ar": "السوق مغلق"},
+    "idle_daily_loss_guard": {"en": "Daily loss limit reached", "ar": "بلغ حد الخسارة اليومي"},
+    "idle_opening_delay": {"en": "Waiting out the opening minutes", "ar": "انتظار دقائق الافتتاح"},
+    "idle_entry_window_closed": {"en": "Too close to the bell for a new entry", "ar": "قرب الإغلاق — لا دخول جديد"},
+    "idle_no_arm_candidates": {"en": "No setup met the entry bar", "ar": "لا توجد فرصة استوفت الشروط"},
+    "idle_orders_disabled": {"en": "Order submission is disabled", "ar": "إرسال الأوامر معطّل"},
+    "idle_awaiting_confirmation": {"en": "Waiting for a second confirmation", "ar": "بانتظار التأكيد الثاني"},
+    "idle_working": {"en": "Scanning and ready to enter", "ar": "يمسح السوق وجاهز للدخول"},
+    "idle_error": {"en": "The engine hit an error", "ar": "المحرك واجه خطأ"},
+
     "lang_toggle": {"en": "عربي", "ar": "EN"},
     "dash": {"en": "—", "ar": "—"},
 

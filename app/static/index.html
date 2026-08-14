@@ -261,6 +261,11 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
         <span class="pill" id="modeTag">—</span>
       </div>
       <div class="sub num" id="nextClose" style="margin-top:7px">—</div>
+      <div class="row" style="margin-top:11px;padding-top:11px;border-top:1px solid var(--line)">
+        <span class="label">حالة المحرك</span>
+        <span class="badge" id="engineState">—</span>
+      </div>
+      <div class="sub" id="engineHint" style="margin-top:8px" hidden></div>
     </div>
 
     <div class="grid2" style="margin-top:12px">
@@ -609,6 +614,23 @@ function render(d){
   $('modeTag').textContent=d.simulation?'محاكاة':'تجريبي مباشر';
   $('marketState').textContent=st.market_open?'السوق مفتوح':'السوق مغلق';
   $('mktDot').style.background=st.market_open?'var(--up)':'var(--faint)';
+  /* لماذا لا يتداول: البوابات كانت تخرج بصمت، فيبدو الانتظار والعطل سواء */
+  const eng=st.engine||{}, why=eng.idle_reason||'starting';
+  const good=new Set(['working','awaiting_confirmation']);
+  const wait=new Set(['market_closed','opening_delay','entry_window_closed','no_arm_candidates','starting']);
+  $('engineState').textContent=tcode('idle_'+why)||why;
+  $('engineState').className='badge '+(good.has(why)?'ok':wait.has(why)?'warn':'hot');
+  const hints={
+    not_configured:'أضف ALPACA_API_KEY و ALPACA_API_SECRET في متغيرات البيئة على الخادم، ثم أعد النشر.',
+    auto_disabled:'التداول التلقائي مُطفأ — فعّله من الإعدادات أو أعد ضبط AUTO_PAPER_TRADING.',
+    orders_disabled:'اضبط ENABLE_PAPER_ORDERS=true للسماح بإرسال الأوامر.',
+    daily_loss_guard:'توقّف اليوم بعد بلوغ حد الخسارة. يُستأنف في الجلسة القادمة.',
+    entry_window_closed:'يتوقف الدخول قبل الإغلاق بـ 30 دقيقة لتفادي مركز يبيت بلا وقف.',
+    no_arm_candidates:'الفلاتر صارمة عمداً: يلزم تقييم 85+ وتأكيد على مسحين متتاليين.',
+    error:eng.last_error||''};
+  const hint=hints[why];
+  $('engineHint').textContent=hint||''; $('engineHint').hidden=!hint;
+
   $('nextClose').textContent=st.next_close
     ? 'الإغلاق القادم · '+new Date(st.next_close).toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit'})
     : (st.market_open?'الجلسة جارية':'خارج ساعات التداول');
