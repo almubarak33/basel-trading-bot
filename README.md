@@ -74,8 +74,6 @@ they matter for interpreting any result.
 
 Tracked, not yet fixed:
 
-- `client_order_id` is derived from the symbol alone, so a second order for the
-  same symbol collides with the first.
 - Open-position limits count filled positions only, so working orders can push
   real exposure past `MAX_OPEN_POSITIONS`.
 - No end-of-day flatten: a filled bracket can carry overnight after its day-only

@@ -13,6 +13,7 @@ from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
 from . import engine, simulation, trade_manager
+from .orders import build_bracket_order
 from .optionalpha import trigger_webhook
 from .intelligence import enrich_candidate, market_brief
 from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
@@ -194,5 +195,5 @@ async def paper_order(req: OrderRequest):
     if len(positions)>=settings.max_open_positions: raise HTTPException(409,"Maximum open positions reached.")
     equity=float(account.get("equity",settings.paper_equity)); qty=position_size(equity,req.entry,req.stop)
     if qty<1: raise HTTPException(400,"Calculated position size is zero.")
-    payload={"symbol":req.symbol.upper(),"qty":str(qty),"side":"buy","type":"limit","time_in_force":"day","limit_price":str(round(req.entry,2)),"order_class":"bracket","take_profit":{"limit_price":str(round(req.target,2))},"stop_loss":{"stop_price":str(round(req.stop,2))},"client_order_id":f"basel-{req.symbol.lower()}"}
+    payload=build_bracket_order(req.symbol,qty,req.entry,req.stop,req.target,source="manual")
     result=await alpaca.submit_order(payload); log_event("paper_order",req.symbol.upper(),json.dumps(result)); return {"qty":qty,"order":result}

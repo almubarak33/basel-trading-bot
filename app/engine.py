@@ -6,6 +6,7 @@ from .alpaca import alpaca
 from .arming import ArmingTracker
 from .config import settings
 from .db import log_event
+from .orders import build_bracket_order
 from .scanner import scan
 from .session import NY, opening_delay_active
 from .strategy import position_size
@@ -117,13 +118,7 @@ async def maybe_place_paper_order(candidate: dict):
     account=await alpaca.account(); equity=float(account.get("equity",settings.paper_equity))
     qty=position_size(equity,entry,stop)
     if qty<1: return
-    payload={
-        "symbol":symbol,"qty":str(qty),"side":"buy","type":"limit","time_in_force":"day",
-        "limit_price":str(round(entry,2)),"order_class":"bracket",
-        "take_profit":{"limit_price":str(round(target,2))},
-        "stop_loss":{"stop_price":str(round(stop,2))},
-        "client_order_id":f"basel-intel-{symbol.lower()}",
-    }
+    payload=build_bracket_order(symbol,qty,entry,stop,target,source="intel")
     result=await alpaca.submit_order(payload)
     COOLDOWNS[symbol]=datetime.now(timezone.utc)+timedelta(minutes=settings.symbol_cooldown_minutes)
     log_event("smart_paper_order",symbol,json.dumps({
