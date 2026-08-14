@@ -14,7 +14,7 @@ from ..exits import evaluate_exit
 from ..indicators import compute_regime
 from ..intelligence import enrich_candidate
 from ..scanner import assemble_candidates
-from ..session import NY, opening_delay_active, session_fraction
+from ..session import NY, minutes_until_close, opening_delay_active, session_fraction
 from ..strategy import position_size
 from .broker import ClosedTrade, PendingOrder, SimulatedBroker
 from .config import BacktestConfig, override_settings
@@ -181,6 +181,22 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
                     continue
 
                 if opening_delay_active(moment, cfg_settings.opening_delay_minutes):
+                    continue
+
+                # 3b. End of day: flatten before the bracket legs expire, then
+                # stop opening trades the flatten would immediately close.
+                minutes_left = minutes_until_close(moment)
+                if (cfg.execution.flatten_at_close and cfg_settings.eod_flatten_enabled
+                        and minutes_left <= cfg_settings.eod_flatten_minutes):
+                    for symbol in list(broker.positions):
+                        price = marks.get(symbol) or broker.positions[symbol].entry_price
+                        broker.close(symbol, price, moment, "eod_flatten")
+                    for symbol in list(broker.pending):
+                        broker.cancel(symbol)
+                    arming.clear()
+                    continue
+                if minutes_left <= cfg_settings.no_entry_minutes_before_close:
+                    arming.clear()
                     continue
 
                 # 4. Screen, score, and arm.

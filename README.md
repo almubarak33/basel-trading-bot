@@ -16,6 +16,24 @@ identical code: `strategy.py` (scoring and levels), `intelligence.py` (grading),
 ## Safety
 Paper only by default. `ENABLE_PAPER_ORDERS=false` prevents execution until explicitly enabled.
 
+## End of day
+
+Bracket legs are day orders, so a position that survives to the bell loses its
+stop and take-profit and carries into the next session's opening gap
+unprotected. Two rules prevent that:
+
+- New entries stop `NO_ENTRY_MINUTES_BEFORE_CLOSE` (30) before the close.
+- Everything still open is flattened `EOD_FLATTEN_MINUTES_BEFORE_CLOSE` (10)
+  before the close, cancelling working orders with it.
+
+Both are measured against Alpaca's `next_close`, not a hardcoded 16:00, so
+early-close days — when the market shuts at 13:00 — flatten correctly rather
+than never triggering. The entry cutoff must stay at or above the flatten
+window, otherwise the bot opens trades it is about to close.
+
+`EOD_FLATTEN_ENABLED=false` accepts overnight exposure with no protective
+orders attached.
+
 ## Authentication
 
 The API is closed by default — every route under `/api` requires a session
@@ -76,8 +94,6 @@ Tracked, not yet fixed:
 
 - Open-position limits count filled positions only, so working orders can push
   real exposure past `MAX_OPEN_POSITIONS`.
-- No end-of-day flatten: a filled bracket can carry overnight after its day-only
-  legs expire.
 - Catalyst and insider feeds are stubs reporting `UNVERIFIED`.
 - `static/demo.html` is a leftover standalone demo page and is still
   English-only; the live dashboard is `static/index.html`.

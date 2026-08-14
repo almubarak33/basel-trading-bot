@@ -74,7 +74,9 @@ These are choices, not measurements. Read results with them in mind:
 - **Regular session only.** Extended-hours bars are dropped, so backtested VWAP
   starts at 09:30. The live bot passes Alpaca's raw window through, which can
   include pre-market prints.
-- **Positions are flattened at 16:00.** The live bot has no such rule.
+- **Positions are flattened before the bell**, mirroring the live EOD rule, and
+  entries stop earlier still. The replay measures this against a standard 16:00
+  close, so early-close days are not reproduced.
 
 ## Guarding against lookahead
 

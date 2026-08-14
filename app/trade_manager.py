@@ -5,6 +5,7 @@ from .alpaca import alpaca, extract_stop_prices
 from .config import settings
 from .db import log_event
 from .exits import PositionState, evaluate_exit
+from .session import minutes_until
 
 TRACKED: dict[str, PositionState] = {}
 LAST_RUN = None
@@ -32,6 +33,10 @@ async def manage_once():
     LAST_RUN=datetime.now(timezone.utc).isoformat(); LAST_ERROR=None
     if not (settings.paper and settings.enable_orders and settings.auto_manage_positions and alpaca.configured()): return
 
+    clock=await alpaca.clock()
+    if not clock.get("is_open",False):
+        TRACKED.clear(); return
+
     risk=await alpaca.risk_status()
     positions=await alpaca.positions()
     if risk.get("blocked") and positions and settings.close_on_daily_guard:
@@ -39,6 +44,18 @@ async def manage_once():
         log_event("risk_guard_flatten",None,json.dumps({"risk":risk,"result":result}))
         TRACKED.clear(); return
     if not positions: TRACKED.clear(); return
+
+    # Bracket legs are day orders: whatever survives to the bell loses its stop
+    # and carries into the next session's opening gap unprotected.
+    minutes_left=minutes_until(clock.get("next_close"))
+    if settings.eod_flatten_enabled and minutes_left is not None and 0<minutes_left<=settings.eod_flatten_minutes:
+        result=await alpaca.close_all_positions()
+        log_event("eod_flatten",None,json.dumps({
+            "minutes_to_close":round(minutes_left,1),
+            "symbols":[(p.get("symbol") or "").upper() for p in positions],
+            "result":result,
+        }))
+        TRACKED.clear(); return
 
     symbols=[(p.get("symbol") or "").upper() for p in positions if p.get("symbol")]
     bars_map=await alpaca.intraday_bars(symbols,minutes=180)

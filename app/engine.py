@@ -8,7 +8,7 @@ from .config import settings
 from .db import log_event
 from .orders import build_bracket_order
 from .scanner import scan
-from .session import NY, opening_delay_active
+from .session import NY, minutes_until, opening_delay_active
 from .strategy import position_size
 from .intelligence import enrich_candidate
 AUTO_ENABLED = settings.auto_paper_trading
@@ -46,6 +46,14 @@ def _opening_delay_active() -> bool:
     return opening_delay_active(datetime.now(NY), settings.opening_delay_minutes)
 
 
+def _entry_window_closed(clock: dict) -> bool:
+    """True once the session is too close to the bell to start a new trade."""
+    minutes_left = minutes_until(clock.get("next_close"))
+    if minutes_left is None:
+        return False
+    return minutes_left <= settings.no_entry_minutes_before_close
+
+
 def _cooldown_active(symbol: str) -> bool:
     until = COOLDOWNS.get(symbol)
     if not until: return False
@@ -68,6 +76,9 @@ async def auto_loop():
                         log_event("daily_loss_guard", None, json.dumps(LAST_RISK_STATUS))
                     elif _opening_delay_active():
                         log_event("opening_delay", None, json.dumps({"minutes": settings.opening_delay_minutes}))
+                    elif _entry_window_closed(clock):
+                        # No point opening a trade the EOD flatten is about to close.
+                        ARMED.clear()
                     else:
                         raw_rows = await scan()
                         rows = [enrich_candidate(r) for r in raw_rows]
@@ -98,6 +109,8 @@ async def maybe_place_paper_order(candidate: dict):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"intel_decision_not_arm"})); return
     if _opening_delay_active():
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"opening_delay"})); return
+    if _entry_window_closed(await alpaca.clock()):
+        log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"entry_window_closed"})); return
     risk_status=await alpaca.risk_status()
     if risk_status.get("blocked"):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"daily_loss_limit","risk":risk_status})); return

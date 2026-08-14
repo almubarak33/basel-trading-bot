@@ -57,4 +57,10 @@ class Settings:
     max_hold_minutes: int = int(os.getenv("MAX_HOLD_MINUTES", "90"))
     close_on_daily_guard: bool = as_bool("CLOSE_ON_DAILY_GUARD", True)
 
+    # End of day. Bracket legs are day orders, so anything still open when they
+    # expire carries overnight unprotected. Disabling the flatten accepts that.
+    eod_flatten_enabled: bool = as_bool("EOD_FLATTEN_ENABLED", True)
+    eod_flatten_minutes: int = int(os.getenv("EOD_FLATTEN_MINUTES_BEFORE_CLOSE", "10"))
+    no_entry_minutes_before_close: int = int(os.getenv("NO_ENTRY_MINUTES_BEFORE_CLOSE", "30"))
+
 settings = Settings()

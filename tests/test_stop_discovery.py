@@ -1,6 +1,6 @@
 """The manager must anchor R to the real entry stop, not a flat assumption."""
 import dataclasses
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -55,10 +55,15 @@ def test_symbols_are_normalised_to_upper_case():
 # ---- manager wiring -----------------------------------------------------
 
 class FakeAlpaca:
-    def __init__(self, orders, positions):
+    def __init__(self, orders, positions, minutes_to_close=120):
         self.orders, self._positions = orders, positions
+        self.minutes_to_close = minutes_to_close
 
     def configured(self): return True
+    async def clock(self):
+        close = datetime.now(timezone.utc) + timedelta(minutes=self.minutes_to_close)
+        return {"is_open": True, "next_close": close.isoformat()}
+    async def close_all_positions(self): return {"ok": True}
     async def risk_status(self): return {"blocked": False}
     async def positions(self): return self._positions
     async def open_orders(self): return self.orders

@@ -152,3 +152,33 @@ def test_true_initial_risk_changes_manager_behaviour(store):
 def test_flatten_at_close_can_be_disabled(store):
     kept = run_backtest(store, config(execution=ExecutionModel(flatten_at_close=False)))
     assert all(t.reason != "session_close" for t in kept.trades)
+
+
+def test_no_entry_survives_into_the_flatten_window(store):
+    from app.session import NY
+    result = run_backtest(store, config())
+    for t in result.trades:
+        local = t.exit_time.astimezone(NY)
+        assert (local.hour, local.minute) <= (15, 50), f"{t.symbol} still open at {local}"
+
+
+def test_entries_stop_before_the_close(store):
+    from app.session import NY
+    result = run_backtest(store, config())
+    for t in result.trades:
+        local = t.entry_time.astimezone(NY)
+        assert (local.hour, local.minute) <= (15, 30)
+
+
+def test_a_position_left_open_is_flattened_at_the_window(store):
+    """Time stop disabled and target out of reach, so only the bell can close it."""
+    result = run_backtest(store, config(overrides={
+        **PERMISSIVE, "no_entry_minutes_before_close": 12, "max_hold_minutes": 600,
+        "reward_r_multiple": 20.0, "symbol_cooldown_minutes": 1,
+    }))
+    flattened = [t for t in result.trades if t.reason == "eod_flatten"]
+    assert flattened, "nothing was flattened at the bell"
+    from app.session import NY
+    for t in flattened:
+        local = t.exit_time.astimezone(NY)
+        assert (local.hour, local.minute) == (15, 50)
