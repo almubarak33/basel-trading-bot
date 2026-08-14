@@ -3,6 +3,7 @@ from dataclasses import asdict
 from datetime import datetime
 from statistics import mean
 from .alpaca import alpaca
+from .catalyst import analyze_catalyst
 from .config import settings
 from .indicators import num
 from .messages import render
@@ -15,16 +16,17 @@ from .strategy_selector import classify_strategy
 def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_map: dict[str, int],
                         snapshots: dict[str, dict], bars_map: dict[str, list[dict]],
                         daily_map: dict[str, list[dict]], regime: dict, fraction: float,
-                        micro_map: dict[str, dict] | None = None) -> list[dict]:
+                        micro_map: dict[str, dict] | None = None,
+                        catalyst_map: dict[str, dict] | None = None) -> list[dict]:
     """Turn raw market data into ranked candidate rows.
 
-    Pure function: the live scanner feeds it broker data, the backtester feeds it
-    replayed historical data, so both exercise identical selection logic. The
-    optional micro_map is diagnostic-only and is intentionally absent in
-    historical replays until quote/trade history is explicitly modelled.
+    Microstructure and catalyst inputs are observational only. Historical replays
+    can omit them without changing execution eligibility until those layers are
+    explicitly validated and promoted into the execution gate.
     """
     output = []
     micro_map = micro_map or {}
+    catalyst_map = catalyst_map or {}
     for s in symbols:
         hist = daily_map.get(s, [])
         vols = [float(b.get("v") or 0) for b in hist[-20:] if float(b.get("v") or 0) > 0]
@@ -40,6 +42,11 @@ def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_m
         row["microstructure"] = micro_map.get(s, {
             "state": "UNAVAILABLE", "quality_score": None, "execution_gate": False,
             "note": "No live quote/trade snapshot attached to this candidate."
+        })
+        row["catalyst"] = catalyst_map.get(s, {
+            "status": "UNAVAILABLE", "score": None, "direction": "UNKNOWN",
+            "headline": None, "execution_gate": False,
+            "note": "Catalyst history not attached to this candidate."
         })
         row["strategy_profile"] = classify_strategy(row)
         if row["eligible"] and not regime.get("longs_allowed", False):
@@ -88,8 +95,6 @@ async def scan():
     bars_map=await alpaca.intraday_bars(symbols,minutes=300)
     daily_map=await alpaca.daily_bars(symbols,days=20)
 
-    # Latest NBBO/trade snapshots are live-only diagnostics for now. Failure to
-    # fetch them must never take the scanner down or silently change eligibility.
     micro_map={}
     try:
         quotes=await alpaca.latest_quotes(symbols)
@@ -105,5 +110,16 @@ async def scan():
             micro_map[s]={"state":"UNAVAILABLE","quality_score":None,"execution_gate":False,
                           "note":f"Microstructure unavailable: {type(exc).__name__}"}
 
+    catalyst_map={}
+    try:
+        news_map=await alpaca.news(symbols,hours=24,limit=50)
+        for s in symbols:
+            catalyst_map[s]=analyze_catalyst(news_map.get(s,[]))
+    except Exception as exc:
+        for s in symbols:
+            catalyst_map[s]={"status":"UNAVAILABLE","score":None,"direction":"UNKNOWN",
+                             "headline":None,"execution_gate":False,
+                             "note":f"Catalyst unavailable: {type(exc).__name__}"}
+
     return assemble_candidates(symbols, change_map, active_rank, snapmap, bars_map, daily_map,
-                               regime, session_fraction(datetime.now(NY)), micro_map)
+                               regime, session_fraction(datetime.now(NY)), micro_map, catalyst_map)
