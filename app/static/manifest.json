@@ -1,10 +1,10 @@
 {
-  "name": "Basel Trader",
+  "name": "بازل ترايدر",
   "short_name": "Basel Trader",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0d12",
-  "theme_color": "#0a0d12",
-  "description": "Professional automated paper-trading command center",
+  "background_color": "#F4F1FC",
+  "theme_color": "#6D54F8",
+  "description": "مركز قيادة احترافي للتداول الآلي التجريبي وإدارة المخاطر",
   "icons": []
 }
