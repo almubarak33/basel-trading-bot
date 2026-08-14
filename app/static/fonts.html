@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>اختيار الخط · بازل ترايدر</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Tajawal:wght@400;500;700;800&family=Cairo:wght@400;600;700;800&family=Almarai:wght@400;700;800&family=Readex+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg1:#E8F6EF;--bg2:#F1EFFB;--bg3:#F7F6FD;--card:#fff;--card2:#FBFBFE;
+  --ink:#101828;--ink2:#344054;--muted:#7A8699;--line:#EEF0F5;
+  --brand:#6C5CE7;--brand-ink:#4A3FC0;--brand-soft:#EEEBFF;
+  --up:#12A150;--up-soft:#E7F6EE;--down:#E5484D;--down-soft:#FDECEC;
+  --sh:0 1px 2px rgba(16,24,40,.04),0 10px 28px rgba(16,24,40,.07);
+}
+*{box-sizing:border-box}
+body{margin:0;padding:16px 14px 40px;background:linear-gradient(180deg,var(--bg1),var(--bg2) 42%,var(--bg3));
+  background-attachment:fixed;color:var(--ink);font-size:15px;line-height:1.5;
+  font-family:"IBM Plex Sans Arabic",system-ui,sans-serif}
+.wrap{max-width:620px;margin:auto}
+.num{unicode-bidi:plaintext;font-variant-numeric:tabular-nums}
+.intro{background:var(--card);border-radius:22px;box-shadow:var(--sh);padding:16px;margin-bottom:18px}
+.intro h1{margin:0 0 6px;font-size:19px;font-weight:700}
+.intro p{margin:0;font-size:13px;color:var(--muted);line-height:1.75}
+.name{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 4px 8px}
+.name b{font-size:13px;font-weight:700;font-family:system-ui}
+.tag{font-size:10.5px;font-weight:700;font-family:system-ui;background:var(--brand-soft);
+  color:var(--brand-ink);border-radius:99px;padding:4px 10px}
+.card{background:var(--card);border-radius:24px;box-shadow:var(--sh);padding:16px;margin-bottom:22px}
+h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{font-size:12px;color:var(--muted);margin-top:3px}
+.label{font-size:10.5px;color:var(--muted);letter-spacing:.4px;font-weight:600}
+.val{font-size:21px;font-weight:700;margin-top:5px;letter-spacing:-.5px}
+.hero-n{font-size:36px;font-weight:700;letter-spacing:-1.5px;line-height:1;color:var(--up)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.badge{display:inline-flex;border-radius:99px;padding:4px 9px;font-size:10.5px;font-weight:700}
+.badge.ok{background:var(--up-soft);color:var(--up)}
+.badge.hot{background:var(--down-soft);color:var(--down)}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:6px 10px;
+  font-size:11px;color:var(--ink2);margin:5px 3px 0}
+.thesis{margin-top:12px;font-size:12px;color:var(--ink2);line-height:1.75}
+.pick{background:var(--card2);border-radius:16px;padding:13px;margin-top:14px;font-size:12.5px;
+  color:var(--ink2);line-height:1.8}
+.f0{font-family:-apple-system,"SF Arabic","Segoe UI",Tahoma,sans-serif}
+.f1{font-family:"IBM Plex Sans Arabic"}
+.f2{font-family:"Tajawal"}
+.f3{font-family:"Cairo"}
+.f4{font-family:"Almarai"}
+.f5{font-family:"Readex Pro"}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>أي خط تريد؟</h1>
+    <p>نفس بطاقة التطبيق بستة خطوط. تصفّح وقارنها بالتصميم الذي أعجبك،
+       ثم أخبرني بالاسم وأطبّقه على التطبيق كاملاً.<br>
+       <b>الخط المطبَّق حالياً:</b> IBM Plex Sans Arabic</p>
+  </div>
+  <div id="out"></div>
+</div>
+
+<script>
+const FONTS = [
+  ["f1","IBM Plex Sans Arabic","المطبَّق حالياً"],
+  ["f2","Tajawal","هندسي · شائع في تطبيقات الخليج"],
+  ["f5","Readex Pro","حديث · مصمم للواجهات"],
+  ["f3","Cairo","كلاسيكي · واسع الانتشار"],
+  ["f4","Almarai","نظيف · عناوين قوية"],
+  ["f0","خط النظام","بلا خط خارجي"],
+];
+
+document.getElementById('out').innerHTML = FONTS.map(([c,name,note]) => `
+  <div class="name"><b>${name}</b><span class="tag">${note}</span></div>
+  <div class="card ${c}">
+    <h2>الرادار الذكي</h2>
+    <div class="sub">الجودة أولاً: التوقيت + السيولة + الهيكل + المخاطرة</div>
+
+    <div class="row" style="align-items:baseline">
+      <span class="hero-n num">+18.4%</span>
+      <span class="badge ok">دخول</span>
+    </div>
+
+    <div class="grid3">
+      <div><div class="label">الدخول</div><div class="val num">$4.84</div></div>
+      <div><div class="label">الهدف</div><div class="val num">$5.16</div></div>
+      <div><div class="label">الوقف</div><div class="val num">$4.68</div></div>
+    </div>
+
+    <div class="row" style="border-top:1px solid var(--line);padding-top:12px">
+      <span class="label">رأس المال</span><span class="val num" style="margin:0">$20,000.00</span>
+    </div>
+
+    <div class="thesis">نموذج زخم عالي الجودة. انتظر التأكيد الثاني ولا تطارد السعر.</div>
+
+    <div style="margin-top:6px">
+      <span class="chip">السعر فوق VWAP</span>
+      <span class="chip">هيكل المتوسطات صاعد</span>
+      <span class="chip">حجم نسبي قوي <span class="num">5.4x</span></span>
+      <span class="chip">اكتمل التصحيح المنضبط</span>
+    </div>
+
+    <div class="pick">
+      المتبقي على الإغلاق <span class="num">1:20:47</span> ·
+      حجم التداول <span class="num">55.8M</span> ·
+      المخاطرة <span class="num">3.31%</span>
+    </div>
+  </div>`).join('');
+</script>
+</body>
+</html>
