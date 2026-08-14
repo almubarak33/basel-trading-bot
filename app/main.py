@@ -14,6 +14,7 @@ from .strategy import position_size
 from . import engine, simulation, trade_manager
 from .optionalpha import trigger_webhook
 from .intelligence import enrich_candidate, market_brief
+from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
 
 app = FastAPI(title="Basel Trader Mobile", version="0.8.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
@@ -91,6 +92,11 @@ async def pro_dashboard():
         }
     except Exception as e:
         raise HTTPException(502, f"Pro dashboard error: {e}")
+
+@app.get("/api/i18n")
+def i18n():
+    """The full message catalog, so the client can switch language without refetching data."""
+    return {"languages": list(LANGUAGES), "default": DEFAULT_LANGUAGE, "messages": MESSAGES}
 
 @app.get("/api/trade-manager")
 def trade_manager_status(): return trade_manager.state()

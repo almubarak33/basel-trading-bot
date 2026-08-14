@@ -1,1 +1,306 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#090d12"><title>Basel Trader Pro</title><style>*{box-sizing:border-box}:root{font-family:-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;background:#090d12;color:#f2f5f8}body{margin:0;background:#090d12}.app{max-width:820px;margin:auto;padding:18px 14px 110px}.top{display:flex;justify-content:space-between;align-items:center}.brand h1{margin:0;font-size:23px}.brand p{margin:4px 0 0;color:#8e99a8;font-size:12px}.pill{border:1px solid #293545;background:#111821;border-radius:999px;padding:7px 10px;font-size:11px}.hero{margin-top:16px;background:linear-gradient(145deg,#151e29,#0f151d);border:1px solid #293545;border-radius:20px;padding:16px}.eyebrow{font-size:10px;color:#8793a2;letter-spacing:.8px}.hero h2{font-size:20px;margin:7px 0}.hero p{margin:0;color:#a7b2c0;font-size:12px;line-height:1.5}.tone{margin-top:12px;font-weight:850}.good{color:#82e2a1}.warn{color:#ffd36b}.bad{color:#ff7373}.blue{color:#7db3ff}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.card{background:#111821;border:1px solid #263243;border-radius:16px;padding:13px}.label{font-size:10px;color:#8793a2}.value{font-size:19px;font-weight:850;margin-top:6px}.small{font-size:11px;color:#8f9aa8;margin-top:5px}.modules{display:flex;gap:7px;overflow:auto;padding:12px 0 2px}.module{white-space:nowrap;border:1px solid #283546;background:#121a24;border-radius:999px;padding:8px 10px;font-size:10px;color:#aab5c2}.section{margin-top:20px}.head{display:flex;justify-content:space-between;align-items:end;margin-bottom:9px}.head h3{margin:0;font-size:16px}.sub{font-size:11px;color:#8793a2;margin-top:3px}.list{display:flex;flex-direction:column;gap:10px}.row{background:#111821;border:1px solid #263243;border-radius:17px;padding:14px}.rowtop{display:flex;justify-content:space-between;align-items:center}.sym{font-size:19px;font-weight:900}.grade{font-size:24px;font-weight:900}.decision{font-size:11px;margin-inline-start:7px}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:11px}.meta div{font-size:9px;color:#8793a2}.meta b{display:block;color:#f2f5f8;font-size:12px;margin-top:3px}.bars{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.factor{font-size:9px;color:#8793a2}.track{height:5px;background:#1b2430;border-radius:99px;overflow:hidden;margin-top:4px}.fill{height:100%;background:#e7edf3}.thesis{margin-top:11px;color:#aeb8c5;font-size:11px;line-height:1.5}.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2a3646;border-radius:999px;padding:6px 8px;font-size:9px;color:#aab5c2}.levels{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.level{background:#0e141c;border:1px solid #202b38;border-radius:11px;padding:8px;font-size:9px;color:#8793a2}.level b{display:block;color:#fff;font-size:12px;margin-top:3px}.empty{padding:24px;text-align:center;color:#8793a2;background:#111821;border:1px solid #263243;border-radius:16px}.nav{position:fixed;left:0;right:0;bottom:0;background:rgba(9,13,18,.95);border-top:1px solid #263243;padding:10px 14px 18px}.navin{max-width:820px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:14px;font-weight:850;font-size:14px}.primary{background:#eef3f7;color:#081018}.danger{background:#ff6669;color:#121212}@media(min-width:650px){.grid{grid-template-columns:repeat(4,1fr)}}</style></head><body><div class="app"><div class="top"><div class="brand"><h1>BASEL TRADER PRO</h1><p>AI Trading Intelligence • Paper First</p></div><div class="pill" id="mode">LOADING</div></div><div class="hero"><div class="eyebrow">MARKET INTELLIGENCE</div><h2 id="briefTitle">Building market brief…</h2><p id="briefText">Analyzing broad market, liquidity and entry quality.</p><div class="tone" id="tone">—</div></div><div class="grid"><div class="card"><div class="label">MARKET</div><div class="value" id="market">—</div><div class="small" id="regime">Regime —</div></div><div class="card"><div class="label">EQUITY</div><div class="value" id="equity">—</div><div class="small" id="buying">Buying power —</div></div><div class="card"><div class="label">DAILY RISK</div><div class="value" id="dd">0.00%</div><div class="small" id="guard">Guard OK</div></div><div class="card"><div class="label">AUTO ENGINE</div><div class="value" id="auto">OFF</div><div class="small" id="armed">Armed —</div></div></div><div class="modules" id="modules"></div><div class="section"><div class="head"><div><h3>Smart Radar</h3><div class="sub">Quality first: timing + liquidity + structure + risk</div></div><div class="pill" id="count">0</div></div><div id="radar" class="list"><div class="empty">Tap REFRESH INTELLIGENCE to analyze.</div></div></div></div><div class="nav"><div class="navin"><button class="danger" onclick="kill()">KILL SWITCH</button><button class="primary" onclick="loadPro()">REFRESH INTELLIGENCE</button></div></div><script>const $=id=>document.getElementById(id);const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{maximumFractionDigits:2});const toneClass=t=>t==='RISK_ON'?'good':t==='RISK_OFF'?'bad':'warn';function factors(c){return Object.entries(c||{}).map(([k,v])=>`<div class="factor">${k.toUpperCase()} ${Number(v).toFixed(0)}<div class="track"><div class="fill" style="width:${Math.max(0,Math.min(100,v))}%"></div></div></div>`).join('')}function chips(a){return (a||[]).slice(0,4).map(x=>`<span class="chip">${x}</span>`).join('')}async function loadPro(){try{$('radar').innerHTML='<div class="empty">Running intelligence engine…</div>';const r=await fetch('/api/pro/dashboard');const d=await r.json();if(!r.ok)throw new Error(d.detail||'Dashboard error');const s=d.status||{},b=d.market_brief||{};$('mode').textContent=d.simulation?'SIMULATION':'PAPER LIVE';$('market').textContent=s.market_open?'OPEN':'CLOSED';$('equity').textContent=money(s.equity);$('buying').textContent='Buying '+money(s.buying_power);const risk=s.risk_status||{};$('dd').textContent=Number(risk.drawdown_pct||0).toFixed(2)+'%';$('guard').textContent=risk.blocked?'DAILY LOSS GUARD':'Guard OK';$('dd').className='value '+(risk.blocked?'bad':'');$('auto').textContent=s.engine?.auto_enabled?'ON':'OFF';$('armed').textContent='Armed '+((s.engine?.armed_symbols||[]).join(', ')||'—');$('briefTitle').textContent=b.tone==='RISK_ON'?'Market supports selective longs':b.tone==='RISK_OFF'?'Defensive mode: protect capital':'Mixed tape: demand A-grade setups';$('briefText').textContent=b.text||'';$('tone').textContent=b.tone||'—';$('tone').className='tone '+toneClass(b.tone);$('regime').textContent='SPY/QQQ '+(b.regime?.longs_allowed?'supportive':'blocking');$('modules').innerHTML=Object.entries(d.modules||{}).map(([k,v])=>`<div class="module">${v?'●':'○'} ${k.replaceAll('_',' ')}</div>`).join('');const rows=d.radar||[];$('count').textContent=rows.length+' names';$('radar').innerHTML=rows.map(x=>{const act=x.decision?.action||'WATCH',ac=act==='ARM'?'good':act==='AVOID'?'bad':'warn';return `<div class="row"><div class="rowtop"><div><span class="sym">${x.symbol}</span><span class="decision ${ac}">${act}</span></div><div class="grade">${x.grade}</div></div><div class="meta"><div>PRICE<b>${money(x.price)}</b></div><div>MOVE<b>${Number(x.change_pct||0).toFixed(1)}%</b></div><div>RVOL<b>${Number(x.rvol||0).toFixed(1)}x</b></div><div>INTEL<b>${Number(x.intel_score||0).toFixed(0)}/100</b></div></div><div class="bars">${factors(x.components)}</div><div class="thesis">${x.decision?.thesis||''}</div><div class="chips">${chips(x.bull_case)}${chips(x.bear_case)}</div><div class="levels"><div class="level">ENTRY<b>${money(x.entry)}</b></div><div class="level">STOP<b>${money(x.stop)}</b></div><div class="level">TARGET<b>${money(x.target)}</b></div></div><div class="chips"><span class="chip">Catalyst: ${x.catalyst?.status||'—'}</span><span class="chip">Insider: ${x.insider?.status||'—'}</span><span class="chip">Risk ${Number(x.risk_pct||0).toFixed(2)}%</span></div></div>`}).join('')||'<div class="empty">No setups found.</div>'}catch(e){$('radar').innerHTML='<div class="empty">'+e.message+'</div>'}}async function kill(){await fetch('/api/kill-switch?enabled=true',{method:'POST'});loadPro()}loadPro();setInterval(loadPro,30000);</script></body></html>
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090d12">
+<title>Basel Trader Pro</title>
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23090d12'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' fill='none' stroke='%2382e2a1' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box}
+:root{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Tahoma,"Noto Sans Arabic",system-ui,sans-serif;
+  background:#090d12;color:#f2f5f8;
+}
+body{margin:0;background:#090d12}
+.app{max-width:820px;margin:auto;padding:18px 14px 110px}
+
+/* Numeric and ticker text keeps its own direction inside an RTL page. */
+.num{unicode-bidi:plaintext}
+
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.brand{min-width:0}
+/* Scales down on narrow phones so the brand stays on one line without
+   squeezing the language toggle off-screen. */
+.brand h1{margin:0;font-size:clamp(15px,4.6vw,20px);letter-spacing:-.3px;white-space:nowrap}
+.brand p{margin:4px 0 0;color:#8e99a8;font-size:12px}
+.topright{display:flex;align-items:center;gap:8px}
+.pill{border:1px solid #293545;background:#111821;border-radius:999px;padding:7px 10px;font-size:11px;white-space:nowrap}
+.langbtn{border:1px solid #37475c;background:#16202c;color:#dce4ec;border-radius:999px;
+  padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.langbtn:hover{background:#1d2937}
+
+.hero{margin-top:16px;background:linear-gradient(145deg,#151e29,#0f151d);border:1px solid #293545;border-radius:20px;padding:16px}
+.eyebrow{font-size:10px;color:#8793a2;letter-spacing:.8px}
+.hero h2{font-size:20px;margin:7px 0}
+.hero p{margin:0;color:#a7b2c0;font-size:12px;line-height:1.5}
+.tone{margin-top:12px;font-weight:850}
+.good{color:#82e2a1}.warn{color:#ffd36b}.bad{color:#ff7373}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.card{background:#111821;border:1px solid #263243;border-radius:16px;padding:13px}
+.label{font-size:10px;color:#8793a2}
+.value{font-size:19px;font-weight:850;margin-top:6px}
+.small{font-size:11px;color:#8f9aa8;margin-top:5px}
+
+.modules{display:flex;gap:7px;overflow:auto;padding:12px 0 2px}
+.module{white-space:nowrap;border:1px solid #283546;background:#121a24;border-radius:999px;padding:8px 10px;font-size:10px;color:#aab5c2}
+
+.section{margin-top:20px}
+.head{display:flex;justify-content:space-between;align-items:end;margin-bottom:9px;gap:10px}
+.head h3{margin:0;font-size:16px}
+.sub{font-size:11px;color:#8793a2;margin-top:3px}
+.list{display:flex;flex-direction:column;gap:10px}
+
+.row{background:#111821;border:1px solid #263243;border-radius:17px;padding:14px}
+.rowtop{display:flex;justify-content:space-between;align-items:center}
+.sym{font-size:19px;font-weight:900}
+.grade{font-size:24px;font-weight:900}
+.decision{font-size:11px;margin-inline-start:7px}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:11px}
+.meta div{font-size:9px;color:#8793a2}
+.meta b{display:block;color:#f2f5f8;font-size:12px;margin-top:3px}
+.bars{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}
+.factor{font-size:9px;color:#8793a2}
+.track{height:5px;background:#1b2430;border-radius:99px;overflow:hidden;margin-top:4px}
+.fill{height:100%;background:#e7edf3}
+.thesis{margin-top:11px;color:#aeb8c5;font-size:11px;line-height:1.5}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{border:1px solid #2a3646;border-radius:999px;padding:6px 8px;font-size:9px;color:#aab5c2}
+.levels{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.level{background:#0e141c;border:1px solid #202b38;border-radius:11px;padding:8px;font-size:9px;color:#8793a2}
+.level b{display:block;color:#fff;font-size:12px;margin-top:3px}
+.empty{padding:24px;text-align:center;color:#8793a2;background:#111821;border:1px solid #263243;border-radius:16px}
+
+.nav{position:fixed;left:0;right:0;bottom:0;background:rgba(9,13,18,.95);border-top:1px solid #263243;padding:10px 14px 18px}
+.navin{max-width:820px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{border:0;border-radius:14px;padding:14px;font-weight:850;font-size:14px;font-family:inherit}
+.primary{background:#eef3f7;color:#081018}
+.danger{background:#ff6669;color:#121212}
+
+@media(min-width:650px){.grid{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="top">
+    <div class="brand">
+      <h1>BASEL TRADER PRO</h1>
+      <p data-i18n="app_tagline"></p>
+    </div>
+    <div class="topright">
+      <button class="langbtn" id="langBtn" onclick="toggleLanguage()"></button>
+      <div class="pill" id="mode" data-i18n="loading"></div>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="eyebrow" data-i18n="market_intelligence"></div>
+    <h2 id="briefTitle" data-i18n="building_brief"></h2>
+    <p id="briefText" data-i18n="analyzing"></p>
+    <div class="tone" id="tone">—</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label" data-i18n="label_market"></div>
+      <div class="value" id="market">—</div>
+      <div class="small" id="regime">—</div>
+    </div>
+    <div class="card">
+      <div class="label" data-i18n="label_equity"></div>
+      <div class="value num" id="equity">—</div>
+      <div class="small num" id="buying">—</div>
+    </div>
+    <div class="card">
+      <div class="label" data-i18n="label_daily_risk"></div>
+      <div class="value num" id="dd">0.00%</div>
+      <div class="small" id="guard">—</div>
+    </div>
+    <div class="card">
+      <div class="label" data-i18n="label_auto_engine"></div>
+      <div class="value" id="auto">—</div>
+      <div class="small" id="armed">—</div>
+    </div>
+  </div>
+
+  <div class="modules" id="modules"></div>
+
+  <div class="section">
+    <div class="head">
+      <div>
+        <h3 data-i18n="smart_radar"></h3>
+        <div class="sub" data-i18n="radar_sub"></div>
+      </div>
+      <div class="pill num" id="count">—</div>
+    </div>
+    <div id="radar" class="list">
+      <div class="empty" data-i18n="tap_refresh"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="nav">
+  <div class="navin">
+    <button class="danger" onclick="kill()" data-i18n="kill_switch"></button>
+    <button class="primary" onclick="loadPro()" data-i18n="refresh"></button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let LANG = localStorage.getItem('lang') || 'en';
+let CATALOG = {};
+let LAST = null;   // cached dashboard payload, re-rendered on language switch
+
+/* Substituted values are wrapped in a Unicode isolate so bidi cannot detach a
+   trailing unit from its number — without it "3.31%" renders as "%3.31" once
+   it sits inside Arabic text. */
+const LRI = '⁦', PDI = '⁩';
+
+/* Render a message code in the active language. Falls back to the code so a
+   missing translation is visible rather than silently blank. */
+function t(code, params) {
+  const entry = CATALOG[code];
+  if (!entry) return code;
+  let text = entry[LANG] || entry.en || code;
+  if (params) for (const [k, v] of Object.entries(params)) {
+    text = text.split('{' + k + '}').join(LRI + v + PDI);
+  }
+  return text;
+}
+
+/* Server-supplied {code, params} objects render through the same catalog. */
+const tc = item => item ? t(item.code, item.params) : '';
+
+/* Prices stay in Western digits in both languages — Arabic-Indic numerals are
+   not what traders read prices in. */
+const money = x => x == null ? '—' : '$' + Number(x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const nf = (x, d) => Number(x || 0).toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d});
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const toneClass = x => x === 'RISK_ON' ? 'good' : x === 'RISK_OFF' ? 'bad' : 'warn';
+const actionCode = a => a === 'ARM' ? 'action_arm' : a === 'AVOID' ? 'action_avoid' : 'action_watch';
+const headlineCode = x => x === 'RISK_ON' ? 'headline_risk_on' : x === 'RISK_OFF' ? 'headline_risk_off' : 'headline_mixed';
+
+function applyLanguage() {
+  document.documentElement.lang = LANG;
+  document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
+  $('langBtn').textContent = t('lang_toggle');
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  if (LAST) render(LAST);
+}
+
+function toggleLanguage() {
+  LANG = LANG === 'ar' ? 'en' : 'ar';
+  localStorage.setItem('lang', LANG);
+  applyLanguage();
+}
+
+function factors(components) {
+  return Object.entries(components || {}).map(([key, value]) => {
+    const width = Math.max(0, Math.min(100, Number(value) || 0));
+    return `<div class="factor">${esc(t('factor_' + key))} <span class="num">${nf(value, 0)}</span>
+      <div class="track"><div class="fill" style="width:${width}%"></div></div></div>`;
+  }).join('');
+}
+
+const chips = codes => (codes || []).slice(0, 4).map(c => `<span class="chip">${esc(tc(c))}</span>`).join('');
+
+function render(data) {
+  const status = data.status || {}, brief = data.market_brief || {};
+  const risk = status.risk_status || {};
+  const engine = status.engine || {};
+
+  $('mode').textContent = t(data.simulation ? 'mode_simulation' : 'mode_paper');
+  $('market').textContent = t(status.market_open ? 'market_open' : 'market_closed');
+  $('equity').textContent = money(status.equity);
+  $('buying').textContent = t('buying_power', {value: money(status.buying_power)});
+  $('dd').textContent = nf(risk.daily_return_pct ?? risk.drawdown_pct, 2) + '%';
+  $('dd').className = 'value num' + (risk.blocked ? ' bad' : '');
+  $('guard').textContent = t(risk.blocked ? 'guard_tripped' : 'guard_ok');
+  $('auto').textContent = t(engine.auto_enabled ? 'state_on' : 'state_off');
+  $('armed').textContent = t('armed_label', {value: (engine.armed_symbols || []).join(', ') || t('dash')});
+
+  $('briefTitle').textContent = t(headlineCode(brief.tone));
+  $('briefText').textContent = brief.text_code ? t(brief.text_code) : (brief.text || '');
+  $('tone').textContent = brief.tone || t('dash');
+  $('tone').className = 'tone ' + toneClass(brief.tone);
+  $('regime').textContent = t('regime_label', {value: t(brief.regime?.longs_allowed ? 'supportive' : 'blocking')});
+
+  $('modules').innerHTML = Object.entries(data.modules || {})
+    .map(([key, on]) => `<div class="module">${on ? '●' : '○'} ${esc(t('module_' + key))}</div>`).join('');
+
+  const rows = data.radar || [];
+  $('count').textContent = t('names_count', {value: rows.length});
+  $('radar').innerHTML = rows.map(x => {
+    const action = x.decision?.action || 'WATCH';
+    const cls = action === 'ARM' ? 'good' : action === 'AVOID' ? 'bad' : 'warn';
+    const catalyst = x.catalyst?.status === 'UNVERIFIED' ? t('unverified') : (x.catalyst?.status || t('dash'));
+    const insider = x.insider?.status === 'UNVERIFIED' ? t('unverified') : (x.insider?.status || t('dash'));
+    return `<div class="row">
+      <div class="rowtop">
+        <div><span class="sym num">${esc(x.symbol)}</span><span class="decision ${cls}">${esc(t(actionCode(action)))}</span></div>
+        <div class="grade num">${esc(x.grade || '')}</div>
+      </div>
+      <div class="meta">
+        <div>${esc(t('col_price'))}<b class="num">${money(x.price)}</b></div>
+        <div>${esc(t('col_move'))}<b class="num">${nf(x.change_pct, 1)}%</b></div>
+        <div>${esc(t('col_rvol'))}<b class="num">${nf(x.rvol, 1)}x</b></div>
+        <div>${esc(t('col_intel'))}<b class="num">${nf(x.intel_score, 0)}/100</b></div>
+      </div>
+      <div class="bars">${factors(x.components)}</div>
+      <div class="thesis">${esc(x.decision?.thesis_code ? t(x.decision.thesis_code) : (x.decision?.thesis || ''))}</div>
+      <div class="chips">${chips(x.bull_codes)}${chips(x.bear_codes)}</div>
+      <div class="levels">
+        <div class="level">${esc(t('col_entry'))}<b class="num">${money(x.entry)}</b></div>
+        <div class="level">${esc(t('col_stop'))}<b class="num">${money(x.stop)}</b></div>
+        <div class="level">${esc(t('col_target'))}<b class="num">${money(x.target)}</b></div>
+      </div>
+      <div class="chips">
+        <span class="chip">${esc(t('chip_catalyst', {value: catalyst}))}</span>
+        <span class="chip">${esc(t('chip_insider', {value: insider}))}</span>
+        <span class="chip">${esc(t('chip_risk', {value: nf(x.risk_pct, 2) + '%'}))}</span>
+      </div>
+    </div>`;
+  }).join('') || `<div class="empty">${esc(t('no_setups'))}</div>`;
+}
+
+async function loadCatalog() {
+  try {
+    const response = await fetch('/api/i18n');
+    const payload = await response.json();
+    CATALOG = payload.messages || {};
+  } catch (e) {
+    CATALOG = {};   // t() falls back to codes; the app still functions
+  }
+  applyLanguage();
+}
+
+async function loadPro() {
+  try {
+    $('radar').innerHTML = `<div class="empty">${esc(t('running_engine'))}</div>`;
+    const response = await fetch('/api/pro/dashboard');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Dashboard error');
+    LAST = data;
+    render(data);
+  } catch (e) {
+    $('radar').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+async function kill() {
+  await fetch('/api/kill-switch?enabled=true', {method: 'POST'});
+  loadPro();
+}
+
+loadCatalog().then(loadPro);
+setInterval(loadPro, 30000);
+</script>
+</body>
+</html>

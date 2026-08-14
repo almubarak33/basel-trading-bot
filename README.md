@@ -16,6 +16,32 @@ identical code: `strategy.py` (scoring and levels), `intelligence.py` (grading),
 ## Safety
 Paper only by default. `ENABLE_PAPER_ORDERS=false` prevents execution until explicitly enabled.
 
+## Languages (English / العربية)
+
+The dashboard ships in both languages and switches instantly from the toggle in
+the header, with full RTL mirroring for Arabic. The choice persists in
+`localStorage`.
+
+The API is language-neutral. Analysis output carries stable codes plus
+pre-formatted values — `reason_codes`, `reject_codes`, `bull_codes`,
+`bear_codes`, `decision.thesis_code`, `market_brief.text_code` — and the client
+renders them through the catalog served at `/api/i18n`. Switching language
+therefore needs no refetch, and wording lives in exactly one place
+(`app/messages.py`). The original English strings (`reasons`, `bear_case`,
+`thesis`, …) are still in every payload for logs and existing consumers.
+
+Adding a language means adding its key to `LANGUAGES` and one entry per code;
+`tests/test_messages.py` fails on any code that is missing a translation, has
+mismatched `{value}` placeholders, or was left as untranslated English.
+
+Two details worth preserving when editing translations:
+
+- **Units belong inside the value, not the template** (`"RVOL {value}"` with
+  `value="3.20x"`). A `%` or `x` left in the template detaches from its number
+  under Arabic bidi and renders as `%3.31`.
+- **Numbers stay in Western digits** in both languages, and the client wraps
+  every substituted value in a Unicode isolate so bidi cannot reorder it.
+
 ## Backtesting
 
 ```bash
@@ -46,3 +72,5 @@ Tracked, not yet fixed:
 - No end-of-day flatten: a filled bracket can carry overnight after its day-only
   legs expire.
 - Catalyst and insider feeds are stubs reporting `UNVERIFIED`.
+- `static/demo.html` is a leftover standalone demo page and is still
+  English-only; the live dashboard is `static/index.html`.

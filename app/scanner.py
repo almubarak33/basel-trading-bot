@@ -4,6 +4,7 @@ from datetime import datetime
 from statistics import mean
 from .alpaca import alpaca
 from .config import settings
+from .messages import render
 from .session import NY, session_fraction
 from .strategy import build_candidate
 
@@ -31,7 +32,8 @@ def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_m
         row["avg_daily_volume_20d"] = round(avg_daily, 0)
         if row["eligible"] and not regime.get("longs_allowed", False):
             row["eligible"] = False
-            row["reject_reasons"].append("Market regime block: SPY/QQQ not supportive")
+            row["reject_reasons"].append(render("regime_block"))
+            row["reject_codes"].append({"code": "regime_block"})
         output.append(row)
     output.sort(key=lambda x: (x["eligible"], x["score"], x.get("rvol", 0), -abs(x["vwap_extension_pct"])), reverse=True)
     return output
