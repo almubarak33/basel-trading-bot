@@ -7,6 +7,39 @@ from .indicators import compute_regime
 DATA = "https://data.alpaca.markets"
 PAPER = "https://paper-api.alpaca.markets"
 
+STOP_ORDER_TYPES = {"stop", "stop_limit", "trailing_stop"}
+
+
+def extract_stop_prices(orders: list[dict]) -> dict[str, float]:
+    """Map symbol -> working stop price, reading bracket legs as well as top-level orders.
+
+    Alpaca positions carry no stop metadata, but a filled bracket leaves its
+    stop leg working, which is where the position's real risk actually lives.
+    When several stops exist for one symbol the highest wins: for a long, that
+    is the one that triggers first.
+    """
+    stops: dict[str, float] = {}
+
+    def visit(order: dict) -> None:
+        for leg in order.get("legs") or []:
+            visit(leg)
+        if (order.get("side") or "").lower() != "sell":
+            return
+        if (order.get("type") or "").lower() not in STOP_ORDER_TYPES:
+            return
+        symbol = (order.get("symbol") or "").upper()
+        try:
+            price = float(order.get("stop_price") or 0)
+        except (TypeError, ValueError):
+            return
+        if symbol and price > 0:
+            stops[symbol] = max(stops.get(symbol, 0.0), price)
+
+    for order in orders or []:
+        visit(order)
+    return stops
+
+
 class Alpaca:
     def __init__(self):
         self.headers = {"APCA-API-KEY-ID": settings.api_key,"APCA-API-SECRET-KEY": settings.api_secret}
@@ -53,6 +86,7 @@ class Alpaca:
 
     async def account(self): return await self._get(f"{PAPER}/v2/account")
     async def positions(self): return await self._get(f"{PAPER}/v2/positions")
+    async def open_orders(self): return await self._get(f"{PAPER}/v2/orders",{"status":"open","nested":"true","limit":500})
     async def clock(self): return await self._get(f"{PAPER}/v2/clock")
 
     async def risk_status(self):

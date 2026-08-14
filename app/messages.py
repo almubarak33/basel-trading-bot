@@ -149,6 +149,21 @@ MESSAGES: dict[str, dict[str, str]] = {
     "module_autonomous_exit": {"en": "autonomous exit", "ar": "خروج تلقائي"},
     "lang_toggle": {"en": "عربي", "ar": "EN"},
     "dash": {"en": "—", "ar": "—"},
+
+    # ---- authentication ---------------------------------------------------
+    "login_title": {"en": "Sign in", "ar": "تسجيل الدخول"},
+    "login_prompt": {"en": "Enter your access token to continue.", "ar": "أدخل رمز الدخول للمتابعة."},
+    "login_token_label": {"en": "Access token", "ar": "رمز الدخول"},
+    "login_submit": {"en": "SIGN IN", "ar": "دخول"},
+    "login_invalid": {"en": "Invalid token.", "ar": "رمز غير صحيح."},
+    "login_throttled": {"en": "Too many attempts. Try again shortly.", "ar": "محاولات كثيرة. حاول بعد قليل."},
+    "login_error": {"en": "Could not reach the server.", "ar": "تعذّر الوصول إلى الخادم."},
+    "logout": {"en": "SIGN OUT", "ar": "خروج"},
+    "session_expired": {"en": "Session expired. Please sign in again.", "ar": "انتهت الجلسة. سجّل الدخول مرة أخرى."},
+    "ephemeral_token_warning": {
+        "en": "API_TOKEN is not set. A temporary token was written to the server log and changes on every restart.",
+        "ar": "لم يتم ضبط API_TOKEN. تم تسجيل رمز مؤقت في سجل الخادم ويتغيّر عند كل إعادة تشغيل.",
+    },
 }
 
 

@@ -11,6 +11,8 @@ def as_bool(name: str, default: bool = False) -> bool:
 class Settings:
     api_key: str = os.getenv("ALPACA_API_KEY", "")
     api_secret: str = os.getenv("ALPACA_API_SECRET", "")
+    # Shared secret for the dashboard/API. Generated per-process when unset.
+    api_token: str = os.getenv("API_TOKEN", "")
     paper: bool = as_bool("ALPACA_PAPER", True)
     enable_orders: bool = as_bool("ENABLE_PAPER_ORDERS", False)
     auto_paper_trading: bool = as_bool("AUTO_PAPER_TRADING", False)

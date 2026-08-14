@@ -55,8 +55,8 @@ def main(argv=None):
                         help="Run on generated data (no API keys needed); validates the harness only")
     parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                         help="Override a strategy setting, e.g. --set min_score=80")
-    parser.add_argument("--true-initial-risk", action="store_true",
-                        help="Feed the manager the real entry stop instead of the live 1.5%% assumption")
+    parser.add_argument("--legacy-risk-assumption", action="store_true",
+                        help="Measure R against a flat 1.5%% of entry, as the manager did before the stop was read from the broker")
     parser.add_argument("--fix-screener-change", action="store_true",
                         help="Give most-actives symbols their real day change instead of the live hardcoded 0")
     parser.add_argument("--json", type=Path, help="Write the full summary as JSON")
@@ -85,7 +85,7 @@ def main(argv=None):
     cfg = BacktestConfig(
         start=start, end=end, symbols=symbols, starting_equity=args.equity,
         overrides=overrides, execution=ExecutionModel(),
-        use_true_initial_risk=args.true_initial_risk,
+        use_true_initial_risk=not args.legacy_risk_assumption,
         faithful_screener_change=not args.fix_screener_change,
     )
 

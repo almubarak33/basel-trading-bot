@@ -79,11 +79,44 @@ button{border:0;border-radius:14px;padding:14px;font-weight:850;font-size:14px;f
 .primary{background:#eef3f7;color:#081018}
 .danger{background:#ff6669;color:#121212}
 
+.gate{padding-bottom:24px}
+.loginbox{margin-top:24px;background:#111821;border:1px solid #263243;border-radius:20px;padding:20px;
+  display:flex;flex-direction:column;gap:10px}
+.loginbox h2{margin:0;font-size:19px}
+.loginbox .sub{margin:0}
+.loginbox input{background:#0c1219;border:1px solid #2a3646;border-radius:12px;padding:13px;
+  color:#f2f5f8;font-size:15px;font-family:inherit;width:100%}
+.loginbox input:focus{outline:2px solid #4d7fc4;border-color:transparent}
+.loginbox button{margin-top:4px}
+.loginerror{color:#ff7373;font-size:12px}
+.notice{color:#ffd36b;font-size:11px;line-height:1.5;border:1px solid #4a3f1f;background:#1c1810;
+  border-radius:10px;padding:9px}
+
 @media(min-width:650px){.grid{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
 <body>
-<div class="app">
+
+<div class="app gate" id="loginScreen" hidden>
+  <div class="top">
+    <div class="brand">
+      <h1>BASEL TRADER PRO</h1>
+      <p data-i18n="app_tagline"></p>
+    </div>
+    <button class="langbtn" id="langBtnLogin" onclick="toggleLanguage()"></button>
+  </div>
+  <form class="loginbox" onsubmit="submitLogin(event)">
+    <h2 data-i18n="login_title"></h2>
+    <p class="sub" data-i18n="login_prompt"></p>
+    <label class="label" for="tokenInput" data-i18n="login_token_label"></label>
+    <input id="tokenInput" type="password" autocomplete="current-password" spellcheck="false" dir="ltr" required>
+    <div class="loginerror" id="loginError" hidden></div>
+    <div class="notice" id="ephemeralNotice" hidden data-i18n="ephemeral_token_warning"></div>
+    <button class="primary" type="submit" data-i18n="login_submit"></button>
+  </form>
+</div>
+
+<div class="app" id="dashboard" hidden>
 
   <div class="top">
     <div class="brand">
@@ -92,6 +125,7 @@ button{border:0;border-radius:14px;padding:14px;font-weight:850;font-size:14px;f
     </div>
     <div class="topright">
       <button class="langbtn" id="langBtn" onclick="toggleLanguage()"></button>
+      <button class="langbtn" onclick="logout()" data-i18n="logout"></button>
       <div class="pill" id="mode" data-i18n="loading"></div>
     </div>
   </div>
@@ -143,7 +177,7 @@ button{border:0;border-radius:14px;padding:14px;font-weight:850;font-size:14px;f
 
 </div>
 
-<div class="nav">
+<div class="nav" id="nav" hidden>
   <div class="navin">
     <button class="danger" onclick="kill()" data-i18n="kill_switch"></button>
     <button class="primary" onclick="loadPro()" data-i18n="refresh"></button>
@@ -190,8 +224,10 @@ const headlineCode = x => x === 'RISK_ON' ? 'headline_risk_on' : x === 'RISK_OFF
 function applyLanguage() {
   document.documentElement.lang = LANG;
   document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
-  $('langBtn').textContent = t('lang_toggle');
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  $('langBtn').textContent = t('lang_toggle');
+  $('langBtnLogin').textContent = t('lang_toggle');
+  if (loginErrorCode) showLoginError(loginErrorCode);
   if (LAST) render(LAST);
 }
 
@@ -270,6 +306,78 @@ function render(data) {
   }).join('') || `<div class="empty">${esc(t('no_setups'))}</div>`;
 }
 
+/* ---- session ---------------------------------------------------------- */
+
+let loginErrorCode = null;
+
+function showLoginError(code) {
+  loginErrorCode = code;
+  const box = $('loginError');
+  box.textContent = code ? t(code) : '';
+  box.hidden = !code;
+}
+
+function showLogin(errorCode) {
+  LAST = null;
+  $('loginScreen').hidden = false;
+  $('dashboard').hidden = true;
+  $('nav').hidden = true;
+  showLoginError(errorCode || null);
+}
+
+function showDashboard() {
+  $('loginScreen').hidden = true;
+  $('dashboard').hidden = false;
+  $('nav').hidden = false;
+  showLoginError(null);
+  $('tokenInput').value = '';
+}
+
+/* Any 401 mid-session means the cookie lapsed — drop straight back to login
+   rather than leaving stale account data on screen. */
+async function api(path, options) {
+  const response = await fetch(path, options);
+  if (response.status === 401) {
+    showLogin('session_expired');
+    throw new Error(t('session_expired'));
+  }
+  return response;
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token: $('tokenInput').value}),
+    });
+    if (response.status === 429) return showLoginError('login_throttled');
+    if (!response.ok) return showLoginError('login_invalid');
+    showDashboard();
+    loadPro();
+  } catch (e) {
+    showLoginError('login_error');
+  }
+}
+
+async function logout() {
+  try { await fetch('/api/logout', {method: 'POST'}); } catch (e) { /* falling back to the login screen anyway */ }
+  showLogin();
+}
+
+async function checkSession() {
+  try {
+    const state = await (await fetch('/api/session')).json();
+    $('ephemeralNotice').hidden = !state.ephemeral_token;
+    if (state.authenticated) { showDashboard(); return true; }
+  } catch (e) { /* treated as signed out */ }
+  showLogin();
+  return false;
+}
+
+/* ---- data ------------------------------------------------------------- */
+
 async function loadCatalog() {
   try {
     const response = await fetch('/api/i18n');
@@ -282,24 +390,27 @@ async function loadCatalog() {
 }
 
 async function loadPro() {
+  if ($('dashboard').hidden) return;
   try {
     $('radar').innerHTML = `<div class="empty">${esc(t('running_engine'))}</div>`;
-    const response = await fetch('/api/pro/dashboard');
+    const response = await api('/api/pro/dashboard');
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || 'Dashboard error');
     LAST = data;
     render(data);
   } catch (e) {
-    $('radar').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    if (!$('dashboard').hidden) $('radar').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
 }
 
 async function kill() {
-  await fetch('/api/kill-switch?enabled=true', {method: 'POST'});
+  try { await api('/api/kill-switch?enabled=true', {method: 'POST'}); } catch (e) { return; }
   loadPro();
 }
 
-loadCatalog().then(loadPro);
+loadCatalog()
+  .then(checkSession)
+  .then(authenticated => { if (authenticated) loadPro(); });
 setInterval(loadPro, 30000);
 </script>
 </body>

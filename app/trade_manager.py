@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio, json
 from datetime import datetime, timezone
-from .alpaca import alpaca
+from .alpaca import alpaca, extract_stop_prices
 from .config import settings
 from .db import log_event
 from .exits import PositionState, evaluate_exit
@@ -43,6 +43,7 @@ async def manage_once():
     symbols=[(p.get("symbol") or "").upper() for p in positions if p.get("symbol")]
     bars_map=await alpaca.intraday_bars(symbols,minutes=180)
     regime=await alpaca.market_regime()
+    stops=extract_stop_prices(await alpaca.open_orders())
     now=datetime.now(timezone.utc)
 
     for p in positions:
@@ -54,6 +55,12 @@ async def manage_once():
         if rec is None:
             rec=PositionState(symbol=symbol,entry=entry,first_seen=now,high=current)
             TRACKED[symbol]=rec
+        # Anchor R to the real entry stop. Only set once: as a stop trails up the
+        # risk it represents shrinks, but R must stay measured against the risk
+        # actually taken at entry.
+        if rec.initial_risk_per_share is None:
+            stop=stops.get(symbol,0.0)
+            if 0<stop<rec.entry: rec.initial_risk_per_share=rec.entry-stop
         decision=evaluate_exit(rec,current,bars_map.get(symbol,[]),regime,now,settings)
         if decision:
             await _close(symbol,decision.reason,decision.meta)

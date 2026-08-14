@@ -35,13 +35,13 @@ below.
 | Flag | Effect |
 | --- | --- |
 | `--set KEY=VALUE` | Override any `Settings` field, e.g. `--set min_score=80`. Repeatable. |
-| `--true-initial-risk` | Feed the manager the real entry stop instead of the live 1.5% assumption. |
+| `--legacy-risk-assumption` | Measure R against a flat 1.5% of entry, as the manager did before it read the stop from the broker. |
 | `--fix-screener-change` | Give most-actives symbols their real day change instead of the live hardcoded `0`. |
 | `--json PATH` | Write the full summary for diffing between runs. |
 
-The last two exist to A/B known defects against the current behaviour. Both
-default to reproducing live faithfully, so a baseline run measures the bot as it
-actually is.
+Defaults reproduce live behaviour, so a baseline run measures the bot as it
+actually is. `--fix-screener-change` A/Bs a known defect that is still open;
+`--legacy-risk-assumption` reproduces one that has since been fixed.
 
 ## What the report tells you
 

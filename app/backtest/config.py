@@ -56,8 +56,9 @@ class BacktestConfig:
     # False measures what fixing it would do.
     faithful_screener_change: bool = True
 
-    # Feed the manager the true entry risk instead of the live 1.5% assumption.
-    use_true_initial_risk: bool = False
+    # Anchor R to the real entry stop, matching the live manager. Set False to
+    # reproduce the legacy flat-1.5% assumption for comparison.
+    use_true_initial_risk: bool = True
 
     def effective_settings(self) -> Settings:
         return dataclasses.replace(live_settings, **self.overrides) if self.overrides else live_settings

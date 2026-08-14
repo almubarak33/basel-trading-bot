@@ -16,6 +16,23 @@ identical code: `strategy.py` (scoring and levels), `intelligence.py` (grading),
 ## Safety
 Paper only by default. `ENABLE_PAPER_ORDERS=false` prevents execution until explicitly enabled.
 
+## Authentication
+
+The API is closed by default — every route under `/api` requires a session
+except `/api/i18n`, `/api/session`, `/api/login` and `/api/logout`.
+
+Set `API_TOKEN` to a long random secret. If it is unset, one is generated at
+startup and written to the server log, so the bot is never accidentally left
+open; that token changes on every restart, which signs everyone out.
+
+Sign in once from the dashboard and the browser holds an HttpOnly,
+SameSite=Strict session cookie for 12 hours — the token itself is never
+readable from JavaScript, and cross-site requests cannot ride the session.
+Scripts can instead send `Authorization: Bearer $API_TOKEN`. Repeated failed
+logins from one address lock that address out for 5 minutes.
+
+Sessions live in memory, so restarting the process signs all clients out.
+
 ## Languages (English / العربية)
 
 The dashboard ships in both languages and switches instantly from the toggle in
@@ -57,11 +74,6 @@ they matter for interpreting any result.
 
 Tracked, not yet fixed:
 
-- The trade manager measures R against a flat 1.5%-of-entry assumption rather
-  than the real entry stop, so its profit-protection and time-stop thresholds
-  fire at the wrong distance. Backtest it with `--true-initial-risk`.
-- The API has no authentication; anything that can reach the server can toggle
-  auto-trading, submit orders, or flatten positions.
 - Most-actives symbols that are not also gainers receive a hardcoded
   `change_pct=0`, which permanently fails `MIN_CHANGE_PCT` and makes that half of
   the screener unreachable. Backtest it with `--fix-screener-change`.
