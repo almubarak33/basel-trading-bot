@@ -118,28 +118,46 @@ def build_multi_symbol_store():
 
 def test_gainers_are_ranked_by_change_at_the_scan_moment():
     builder = UniverseBuilder(build_multi_symbol_store(), DAY, ["AAAA", "BBBB", "CCCC"], 25)
-    symbols, change_map, _, _ = builder.select(OPEN, faithful_screener_change=True)
+    symbols, change_map, _, _ = builder.select(OPEN, legacy_screener_change=True)
     assert symbols[:2] == ["AAAA", "BBBB"]
     assert round(change_map["AAAA"], 2) == 5.0
 
 
 def test_most_actives_are_ranked_by_volume_so_far():
     builder = UniverseBuilder(build_multi_symbol_store(), DAY, ["AAAA", "BBBB", "CCCC"], 25)
-    _, _, active_rank, _ = builder.select(OPEN, faithful_screener_change=True)
+    _, _, active_rank, _ = builder.select(OPEN, legacy_screener_change=True)
     assert active_rank["CCCC"] == 1
 
 
-def test_faithful_mode_reproduces_the_hardcoded_zero_change():
-    """Live sets change_pct=0 for actives that are not also gainers."""
+def test_legacy_mode_reproduces_the_hardcoded_zero_change():
+    """The old scanner set change_pct=0 for actives that were not also gainers."""
     builder = UniverseBuilder(build_multi_symbol_store(), DAY, ["AAAA", "BBBB", "CCCC"], 25)
-    _, change_map, _, _ = builder.select(OPEN, faithful_screener_change=True)
+    _, change_map, _, _ = builder.select(OPEN, legacy_screener_change=True)
     assert change_map["CCCC"] == 0.0
 
 
-def test_fixed_mode_gives_actives_their_real_change():
+def test_actives_now_get_their_real_change():
     builder = UniverseBuilder(build_multi_symbol_store(), DAY, ["AAAA", "BBBB", "CCCC"], 25)
-    _, change_map, _, _ = builder.select(OPEN, faithful_screener_change=False)
+    _, change_map, _, _ = builder.select(OPEN, legacy_screener_change=False)
     assert change_map["CCCC"] == pytest.approx(-3.2258, abs=1e-3)
+
+
+def test_a_strong_mover_pushed_out_of_the_gainers_cut_keeps_its_change():
+    """The case the live fix addresses: a symbol reaching the universe only via
+    most-actives is still up on the day and must not be reported as flat."""
+    store = BarStore()
+    # Three risers; a screener_top of 2 leaves the weakest out of the gainers list.
+    for symbol, prior, close, volume in (("AAAA", 10.0, 13.0, 100), ("BBBB", 10.0, 12.0, 100),
+                                         ("CCCC", 10.0, 10.6, 9000)):
+        store.add_minute_bars(symbol, minute_bars([close], [volume]))
+        store.add_daily_bars(symbol, [daily_bar(DAY - timedelta(days=1), prior)])
+
+    builder = UniverseBuilder(store, DAY, ["AAAA", "BBBB", "CCCC"], screener_top=2)
+    _, fixed, _, _ = builder.select(OPEN, legacy_screener_change=False)
+    _, legacy, _, _ = builder.select(OPEN, legacy_screener_change=True)
+
+    assert fixed["CCCC"] == pytest.approx(6.0)
+    assert legacy["CCCC"] == 0.0
 
 
 def test_symbols_with_no_bars_yet_are_not_selected():
@@ -147,7 +165,7 @@ def test_symbols_with_no_bars_yet_are_not_selected():
     store.add_minute_bars("DDDD", minute_bars([50.0], start=OPEN + timedelta(minutes=90)))
     store.add_daily_bars("DDDD", [daily_bar(DAY - timedelta(days=1), 40.0)])
     builder = UniverseBuilder(store, DAY, ["AAAA", "BBBB", "CCCC", "DDDD"], 25)
-    symbols, _, _, _ = builder.select(OPEN, faithful_screener_change=True)
+    symbols, _, _, _ = builder.select(OPEN, legacy_screener_change=True)
     assert "DDDD" not in symbols
 
 

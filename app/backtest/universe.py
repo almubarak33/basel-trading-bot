@@ -87,7 +87,7 @@ class UniverseBuilder:
                 continue
             self.slices[symbol] = DaySlice.build(symbol, bars, store.prior_daily_close(symbol, day))
 
-    def select(self, moment: datetime, faithful_screener_change: bool) -> tuple[list[str], dict[str, float], dict[str, int], dict[str, int]]:
+    def select(self, moment: datetime, legacy_screener_change: bool = False) -> tuple[list[str], dict[str, float], dict[str, int], dict[str, int]]:
         """Return (symbols, change_map, active_rank, bar_index) as of `moment`.
 
         Mirrors the live ordering: gainers first, then most-actives that are not
@@ -111,9 +111,10 @@ class UniverseBuilder:
             if symbol in change_map:
                 continue
             symbols.append(symbol)
-            # Live hardcodes 0.0 here, which then fails MIN_CHANGE_PCT and makes the
-            # most-actives half of the screener unreachable. Reproduced by default.
-            change_map[symbol] = 0.0 if faithful_screener_change else self.slices[symbol].change_pct_at(live[symbol])
+            # Live derives this from the snapshot's previous close; the legacy
+            # hardcoded 0.0 failed MIN_CHANGE_PCT and made the most-actives half
+            # of the screener unreachable.
+            change_map[symbol] = 0.0 if legacy_screener_change else self.slices[symbol].change_pct_at(live[symbol])
 
         symbols = symbols[:max(self.screener_top, 25)]
         active_rank = {symbol: i for i, symbol in enumerate(actives, 1)}

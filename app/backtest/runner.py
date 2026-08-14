@@ -184,7 +184,7 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
                     continue
 
                 # 4. Screen, score, and arm.
-                symbols, change_map, active_rank, _ = ctx.universe.select(moment, cfg.faithful_screener_change)
+                symbols, change_map, active_rank, _ = ctx.universe.select(moment, cfg.legacy_screener_change)
                 symbols = _prefilter(symbols, change_map, ctx, moment, cfg_settings)
                 if not symbols:
                     arming.retain_only(set(), "intel_or_setup_failed_recheck")

@@ -4,6 +4,7 @@ from datetime import datetime
 from statistics import mean
 from .alpaca import alpaca
 from .config import settings
+from .indicators import num
 from .messages import render
 from .session import NY, session_fraction
 from .strategy import build_candidate
@@ -39,6 +40,25 @@ def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_m
     return output
 
 
+def change_pct_from_snapshot(snapshot: dict) -> float:
+    """Intraday move against the previous session's close.
+
+    The most-actives screener reports volume only, with no percentage change, so
+    symbols reaching the universe that way have theirs derived here instead.
+    Price resolution mirrors `build_candidate` so both see the same number.
+    """
+    snapshot = snapshot or {}
+    prev_close = num((snapshot.get("prevDailyBar") or {}).get("c"))
+    if prev_close <= 0:
+        return 0.0
+    price = (num((snapshot.get("latestTrade") or {}).get("p"))
+             or num((snapshot.get("minuteBar") or {}).get("c"))
+             or num((snapshot.get("dailyBar") or {}).get("c")))
+    if price <= 0:
+        return 0.0
+    return (price / prev_close - 1) * 100
+
+
 async def scan():
     regime = await alpaca.market_regime()
     movers = await alpaca.movers(settings.screener_top)
@@ -52,14 +72,17 @@ async def scan():
         if not s: continue
         if s not in symbols: symbols.append(s)
         change_map[s]=float(row.get("percent_change", row.get("percentChange",0)) or 0)
+    active_only=[]
     for row in active_rows:
         s=row.get("symbol")
         if s and s not in symbols:
-            symbols.append(s); change_map[s]=0.0
+            symbols.append(s); active_only.append(s)
     symbols=symbols[:max(settings.screener_top,25)]
 
     snapshots=await alpaca.snapshots(symbols)
     snapmap=snapshots.get("snapshots",snapshots)
+    for s in active_only:
+        change_map[s]=change_pct_from_snapshot(snapmap.get(s))
     bars_map=await alpaca.intraday_bars(symbols,minutes=300)
     daily_map=await alpaca.daily_bars(symbols,days=20)
 

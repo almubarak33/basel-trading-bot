@@ -51,10 +51,9 @@ class BacktestConfig:
     # it. A multi-day backtest resumes the next session so later days still sample.
     resume_after_guard_next_day: bool = True
 
-    # Live hardcodes change_pct=0 for most-actives symbols that are not also
-    # gainers, which permanently rejects them. True reproduces that behaviour;
-    # False measures what fixing it would do.
-    faithful_screener_change: bool = True
+    # Most-actives symbols get their real day change, matching the live scanner.
+    # Set True to reproduce the legacy hardcoded 0, which rejected all of them.
+    legacy_screener_change: bool = False
 
     # Anchor R to the real entry stop, matching the live manager. Set False to
     # reproduce the legacy flat-1.5% assumption for comparison.

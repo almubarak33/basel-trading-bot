@@ -36,12 +36,16 @@ below.
 | --- | --- |
 | `--set KEY=VALUE` | Override any `Settings` field, e.g. `--set min_score=80`. Repeatable. |
 | `--legacy-risk-assumption` | Measure R against a flat 1.5% of entry, as the manager did before it read the stop from the broker. |
-| `--fix-screener-change` | Give most-actives symbols their real day change instead of the live hardcoded `0`. |
+| `--legacy-screener-change` | Hardcode most-actives day change to `0`, as the scanner did before it derived the real value. |
 | `--json PATH` | Write the full summary for diffing between runs. |
 
-Defaults reproduce live behaviour, so a baseline run measures the bot as it
-actually is. `--fix-screener-change` A/Bs a known defect that is still open;
-`--legacy-risk-assumption` reproduces one that has since been fixed.
+Defaults reproduce current live behaviour, so a baseline run measures the bot as
+it actually is. The two `--legacy-*` flags reproduce defects that have since
+been fixed, for measuring what the fix was worth.
+
+`--legacy-screener-change` only bites when the universe is large enough that the
+top-N gainers cut actually excludes something — with a handful of symbols every
+riser makes the cut and the flag changes nothing.
 
 ## What the report tells you
 

@@ -57,8 +57,8 @@ def main(argv=None):
                         help="Override a strategy setting, e.g. --set min_score=80")
     parser.add_argument("--legacy-risk-assumption", action="store_true",
                         help="Measure R against a flat 1.5%% of entry, as the manager did before the stop was read from the broker")
-    parser.add_argument("--fix-screener-change", action="store_true",
-                        help="Give most-actives symbols their real day change instead of the live hardcoded 0")
+    parser.add_argument("--legacy-screener-change", action="store_true",
+                        help="Hardcode most-actives day change to 0, as the scanner did before it derived the real value")
     parser.add_argument("--json", type=Path, help="Write the full summary as JSON")
     args = parser.parse_args(argv)
 
@@ -86,7 +86,7 @@ def main(argv=None):
         start=start, end=end, symbols=symbols, starting_equity=args.equity,
         overrides=overrides, execution=ExecutionModel(),
         use_true_initial_risk=not args.legacy_risk_assumption,
-        faithful_screener_change=not args.fix_screener_change,
+        legacy_screener_change=args.legacy_screener_change,
     )
 
     result = run_backtest(store, cfg, progress=lambda day, count: print(f"  … {day}  trades={count}", flush=True))

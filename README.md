@@ -74,9 +74,6 @@ they matter for interpreting any result.
 
 Tracked, not yet fixed:
 
-- Most-actives symbols that are not also gainers receive a hardcoded
-  `change_pct=0`, which permanently fails `MIN_CHANGE_PCT` and makes that half of
-  the screener unreachable. Backtest it with `--fix-screener-change`.
 - `client_order_id` is derived from the symbol alone, so a second order for the
   same symbol collides with the first.
 - Open-position limits count filled positions only, so working orders can push
