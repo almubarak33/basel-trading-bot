@@ -50,17 +50,25 @@ class Alpaca:
         })
         return payload.get("bars", {})
 
+    async def daily_bars(self, symbols: list[str], days: int = 25):
+        if not symbols:
+            return {}
+        start = datetime.now(timezone.utc) - timedelta(days=max(days * 2, 40))
+        payload = await self._get(f"{DATA}/v2/stocks/bars", {
+            "symbols": ",".join(symbols), "timeframe": "1Day",
+            "start": start.isoformat().replace("+00:00", "Z"), "limit": 10000,
+            "adjustment": "raw",
+        })
+        return payload.get("bars", {})
+
     async def market_regime(self):
-        """Simple SPY/QQQ intraday regime filter. Longs are allowed only when the broad tape is healthy."""
         bars = await self.intraday_bars(["SPY", "QQQ"], minutes=180)
-        details = {}
-        positive = 0
+        details = {}; positive = 0
         for symbol in ("SPY", "QQQ"):
             rows = bars.get(symbol, [])
             closes = [float(b.get("c") or 0) for b in rows if float(b.get("c") or 0) > 0]
             if len(closes) < 20:
-                details[symbol] = {"healthy": False, "reason": "insufficient_data"}
-                continue
+                details[symbol] = {"healthy": False, "reason": "insufficient_data"}; continue
             def ema(vals, n):
                 k = 2 / (n + 1); out = vals[0]
                 for v in vals[1:]: out = v * k + out * (1-k)
@@ -71,12 +79,24 @@ class Alpaca:
             healthy = last > e20 and e9 >= e20 and ret15 > -0.35
             positive += int(healthy)
             details[symbol] = {"price": round(last,4), "ema9": round(e9,4), "ema20": round(e20,4), "ret15_pct": round(ret15,2), "healthy": healthy}
-        allowed = positive >= 1
-        return {"longs_allowed": allowed, "healthy_indexes": positive, "details": details}
+        return {"longs_allowed": positive >= 1, "healthy_indexes": positive, "details": details}
 
     async def account(self): return await self._get(f"{PAPER}/v2/account")
     async def positions(self): return await self._get(f"{PAPER}/v2/positions")
     async def clock(self): return await self._get(f"{PAPER}/v2/clock")
+
+    async def risk_status(self):
+        account = await self.account()
+        equity = float(account.get("equity", 0) or 0)
+        last_equity = float(account.get("last_equity", equity) or equity)
+        dd = ((equity / last_equity) - 1) * 100 if last_equity > 0 else 0
+        return {
+            "equity": equity,
+            "last_equity": last_equity,
+            "daily_return_pct": round(dd, 3),
+            "daily_loss_limit_pct": settings.max_daily_loss * 100,
+            "blocked": dd <= -(settings.max_daily_loss * 100),
+        }
 
     async def submit_order(self, payload: dict):
         if not settings.paper: raise RuntimeError("Live trading is disabled in this MVP.")
