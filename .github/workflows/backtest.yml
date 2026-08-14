@@ -18,10 +18,14 @@ on:
         description: "Universe size (most liquid N). Larger = slower and more memory."
         required: true
         default: "150"
-      disable_regime_exit:
-        description: "A/B: turn OFF the SPY/QQQ risk-off exit rule"
-        type: boolean
-        default: false
+      preset:
+        description: "Which experiment to run"
+        type: choice
+        required: true
+        default: baseline
+        options:
+          - baseline
+          - no-regime-exit
       overrides:
         description: "Extra overrides, e.g. --set min_score=80 (advanced)"
         required: false
@@ -77,11 +81,14 @@ jobs:
           # Assemble overrides from the toggles so an A/B test never depends on
           # typing a command string correctly into a phone keyboard.
           OVERRIDES="${{ inputs.overrides }}"
-          if [ "${{ inputs.disable_regime_exit }}" = "true" ]; then
-            OVERRIDES="$OVERRIDES --set regime_exit_enabled=false"
-          fi
+          case "${{ inputs.preset }}" in
+            baseline)       ;;
+            no-regime-exit) OVERRIDES="$OVERRIDES --set regime_exit_enabled=false" ;;
+            *) echo "::error::Unknown preset '${{ inputs.preset }}'"; exit 1 ;;
+          esac
           OVERRIDES="$(echo "$OVERRIDES" | xargs || true)"
           echo "EFFECTIVE_OVERRIDES=${OVERRIDES:-(none)}" >> "$GITHUB_ENV"
+          echo "Preset: ${{ inputs.preset }}"
           echo "Running with overrides: ${OVERRIDES:-(none)}"
           python -m app.backtest.cli \
             --start "${{ inputs.start }}" --end "${{ inputs.end }}" \
@@ -94,7 +101,9 @@ jobs:
         if: always()
         run: |
           {
-            echo "## Backtest ${{ inputs.start }} → ${{ inputs.end }}"
+            echo "## Backtest — ${{ inputs.preset }}"
+            echo ""
+            echo "${{ inputs.start }} → ${{ inputs.end }}"
             echo ""
             echo "Universe: ${UNIVERSE_SIZE:-?} symbols"
             # Always state the configuration: a run whose override was silently
