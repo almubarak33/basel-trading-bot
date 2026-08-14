@@ -18,8 +18,12 @@ on:
         description: "Universe size (most liquid N). Larger = slower and more memory."
         required: true
         default: "150"
+      disable_regime_exit:
+        description: "A/B: turn OFF the SPY/QQQ risk-off exit rule"
+        type: boolean
+        default: false
       overrides:
-        description: "Strategy overrides, space separated, e.g. --set min_score=80"
+        description: "Extra overrides, e.g. --set min_score=80 (advanced)"
         required: false
         default: ""
       survivors_only:
@@ -70,11 +74,20 @@ jobs:
           ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: |
           mkdir -p results
+          # Assemble overrides from the toggles so an A/B test never depends on
+          # typing a command string correctly into a phone keyboard.
+          OVERRIDES="${{ inputs.overrides }}"
+          if [ "${{ inputs.disable_regime_exit }}" = "true" ]; then
+            OVERRIDES="$OVERRIDES --set regime_exit_enabled=false"
+          fi
+          OVERRIDES="$(echo "$OVERRIDES" | xargs || true)"
+          echo "EFFECTIVE_OVERRIDES=${OVERRIDES:-(none)}" >> "$GITHUB_ENV"
+          echo "Running with overrides: ${OVERRIDES:-(none)}"
           python -m app.backtest.cli \
             --start "${{ inputs.start }}" --end "${{ inputs.end }}" \
             --symbols-file universe.txt \
             --json results/summary.json \
-            ${{ inputs.overrides }} \
+            $OVERRIDES \
             2>&1 | tee results/report.txt
 
       - name: Publish report to the run summary
@@ -84,6 +97,10 @@ jobs:
             echo "## Backtest ${{ inputs.start }} → ${{ inputs.end }}"
             echo ""
             echo "Universe: ${UNIVERSE_SIZE:-?} symbols"
+            # Always state the configuration: a run whose override was silently
+            # dropped is indistinguishable from the baseline without this.
+            echo ""
+            echo "Overrides: \`${EFFECTIVE_OVERRIDES:-(none)}\`"
             if [ "${{ inputs.survivors_only }}" = "true" ]; then
               echo ""
               echo "> **Survivorship bias:** delisted names were excluded, so these"
