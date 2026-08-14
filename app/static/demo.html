@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Basel Trader Pro Demo</title>
+<style>
+body{margin:0;background:#0b0f14;color:#f2f5f8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+*{box-sizing:border-box}
+.wrap{max-width:520px;margin:auto;padding:18px 14px 90px}
+h1{font-size:22px;margin:0} .muted{color:#8d98a8;font-size:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.card,.row,.panel{background:#121821;border:1px solid #253041;border-radius:15px;padding:13px}
+.label{font-size:11px;color:#8d98a8}.val{font-size:20px;font-weight:800;margin-top:6px}
+.green{color:#82e2a1}.red{color:#ff6b6b}.yellow{color:#ffd36b}.blue{color:#7db3ff}
+.buttons{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0}
+button{border:0;border-radius:12px;padding:12px;font-weight:800}
+.primary{background:#eef3f7;color:#081018}.dark{background:#1a2230;color:#fff;border:1px solid #2a3748}.danger{background:#ff6b6b;color:#111}
+.section{margin-top:18px}.section h2{font-size:16px;margin:0 0 8px}
+.list{display:flex;flex-direction:column;gap:8px}
+.top{display:flex;justify-content:space-between;align-items:center}.sym{font-size:18px;font-weight:900}.score{font-size:18px;font-weight:900}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.meta div{font-size:10px;color:#8d98a8}.meta b{display:block;color:#fff;font-size:12px;margin-top:2px}
+.reason{font-size:11px;color:#a8b2c0;margin-top:8px;line-height:1.45}
+.bottom{position:fixed;left:0;right:0;bottom:0;background:#0b0f14e8;border-top:1px solid #253041;padding:10px 14px}
+.bottomin{max-width:520px;margin:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.log{max-height:220px;overflow:auto;font-size:11px}.log div{padding:7px 0;border-bottom:1px solid #202936}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>BASEL TRADER PRO</h1>
+  <div class="muted">Interactive Paper Demo</div>
+
+  <div class="grid">
+    <div class="card"><div class="label">السوق</div><div class="val green">OPEN</div></div>
+    <div class="card"><div class="label">الرصيد</div><div class="val" id="equity">$20,000</div></div>
+    <div class="card"><div class="label">P&L اليوم</div><div class="val green" id="pnl">$0</div></div>
+    <div class="card"><div class="label">البوت</div><div class="val" id="bot">OFF</div></div>
+  </div>
+
+  <div class="buttons">
+    <button class="primary" onclick="scan()">SCAN</button>
+    <button class="dark" onclick="toggleBot()">AUTO BOT</button>
+    <button class="dark" onclick="tick()">+ TICK</button>
+  </div>
+
+  <div class="section">
+    <h2>Top Setups</h2>
+    <div id="stocks" class="list"></div>
+  </div>
+
+  <div class="section">
+    <h2>الصفقات المفتوحة</h2>
+    <div id="positions" class="list"></div>
+  </div>
+
+  <div class="section">
+    <h2>Decision Log</h2>
+    <div class="panel log" id="log"></div>
+  </div>
+</div>
+
+<div class="bottom">
+  <div class="bottomin">
+    <button class="danger" onclick="kill()">KILL SWITCH</button>
+    <button class="primary" onclick="scan()">SCAN MARKET</button>
+  </div>
+</div>
+
+<script>
+let botOn=false, killed=false, pnl=0, equity=20000, scanCount=0;
+let positions=[];
+let data=[
+ {s:'NOVA',p:4.82,score:92,chg:18.4,rvol:5.4,spread:.18,vwap:4.74,ready:true,armed:false},
+ {s:'KXIN',p:7.15,score:88,chg:12.6,rvol:3.9,spread:.21,vwap:7.05,ready:true,armed:false},
+ {s:'AERO',p:3.46,score:81,chg:27.8,rvol:6.7,spread:.33,vwap:3.31,ready:false,armed:false},
+ {s:'BOLT',p:12.90,score:74,chg:6.4,rvol:1.8,spread:.62,vwap:12.71,ready:false,armed:false}
+];
+
+function addLog(t){
+  const el=document.getElementById('log');
+  el.innerHTML='<div><b>'+new Date().toLocaleTimeString()+'</b> — '+t+'</div>'+el.innerHTML;
+}
+function renderStocks(){
+ const box=document.getElementById('stocks');
+ box.innerHTML=data.map(x=>{
+   let status=x.armed?'ARMED':(x.ready?'READY':'WAIT');
+   let cls=x.armed?'blue':(x.ready?'green':'yellow');
+   let why=x.ready?'Pullback + Reclaim + Volume confirmed':'FOMO/Spread/Setup filter blocked';
+   return `<div class="row">
+    <div class="top"><div><span class="sym">${x.s}</span> <span class="${cls}">${status}</span></div><div class="score">${x.score}</div></div>
+    <div class="meta">
+      <div>PRICE<b>$${x.p.toFixed(2)}</b></div>
+      <div>MOVE<b>+${x.chg.toFixed(1)}%</b></div>
+      <div>RVOL<b>${x.rvol.toFixed(1)}x</b></div>
+      <div>SPREAD<b>${x.spread.toFixed(2)}%</b></div>
+    </div>
+    <div class="reason">${why}</div>
+    <div class="buttons">
+      <button class="dark" onclick="arm('${x.s}')">ARM</button>
+      <button class="primary" onclick="buy('${x.s}')">PAPER BUY</button>
+      <button class="dark" onclick="details('${x.s}')">DETAILS</button>
+    </div>
+   </div>`;
+ }).join('');
+}
+function renderPositions(){
+ const box=document.getElementById('positions');
+ let open=positions.filter(x=>x.open);
+ if(!open.length){box.innerHTML='<div class="panel muted">لا توجد صفقات مفتوحة.</div>';return}
+ box.innerHTML=open.map(t=>`<div class="row">
+  <div class="top"><div class="sym">${t.s}</div><div class="${t.pl>=0?'green':'red'}">$${t.pl.toFixed(2)}</div></div>
+  <div class="meta">
+   <div>ENTRY<b>$${t.entry.toFixed(2)}</b></div>
+   <div>NOW<b>$${t.now.toFixed(2)}</b></div>
+   <div>STOP<b>$${t.stop.toFixed(2)}</b></div>
+   <div>TARGET<b>$${t.target.toFixed(2)}</b></div>
+  </div>
+  <div class="buttons"><button class="danger" onclick="closePos('${t.s}','MANUAL')">CLOSE</button></div>
+ </div>`).join('');
+}
+function scan(){
+ scanCount++;
+ data=data.map(x=>({...x,
+   p:+(x.p*(1+(Math.random()-.48)*.012)).toFixed(2),
+   score:Math.max(65,Math.min(97,Math.round(x.score+(Math.random()*6-3))))
+ }));
+ data.forEach(x=>{
+   if(x.armed){
+     if(!x.ready){x.armed=false;addLog(x.s+': disarmed — setup failed recheck')}
+     else{ x.armed=false; addLog(x.s+': CONFIRMED on scan #'+scanCount); if(botOn&&!killed) buy(x.s); }
+   }
+ });
+ renderStocks();
+ addLog('Market scan #'+scanCount+' completed');
+}
+function arm(sym){
+ let x=data.find(i=>i.s===sym);
+ if(!x.ready){addLog(sym+': ARM blocked by entry-quality filters');return}
+ x.armed=true;renderStocks();addLog(sym+': ARMED — waiting next scan');
+}
+function buy(sym){
+ if(killed){addLog(sym+': blocked — Kill Switch ON');return}
+ let x=data.find(i=>i.s===sym);
+ if(!x.ready){addLog(sym+': buy blocked — setup not valid');return}
+ if(positions.filter(p=>p.open).length>=2){addLog(sym+': blocked — max positions');return}
+ if(positions.some(p=>p.open&&p.s===sym)){addLog(sym+': already open');return}
+ let entry=x.p, stop=+(entry*.985).toFixed(2), target=+(entry+(entry-stop)*2).toFixed(2);
+ let qty=Math.max(1,Math.min(Math.floor((equity*.0035)/(entry-stop)),Math.floor((equity*.15)/entry)));
+ positions.push({s:sym,entry,now:entry,stop,target,qty,pl:0,open:true});
+ addLog(sym+': PAPER BUY '+qty+' @ $'+entry.toFixed(2));
+ renderPositions();
+}
+function tick(){
+ positions.filter(p=>p.open).forEach(t=>{
+   t.now=+(t.now*(1+(Math.random()-.47)*.03)).toFixed(2);
+   t.pl=(t.now-t.entry)*t.qty;
+   if(t.now>=t.target) closePos(t.s,'TARGET');
+   else if(t.now<=t.stop) closePos(t.s,'STOP');
+ });
+ renderPositions();updateTotals();
+}
+function closePos(sym,reason){
+ let t=positions.find(p=>p.open&&p.s===sym);
+ if(!t)return;
+ t.open=false; pnl+=t.pl; equity+=t.pl;
+ addLog(sym+': CLOSED '+reason+' | P&L $'+t.pl.toFixed(2));
+ renderPositions();updateTotals();
+}
+function updateTotals(){
+ document.getElementById('equity').textContent='$'+equity.toFixed(2);
+ let pe=document.getElementById('pnl'); pe.textContent=(pnl>=0?'+':'')+'$'+pnl.toFixed(2); pe.className='val '+(pnl>=0?'green':'red');
+}
+function toggleBot(){
+ if(killed){addLog('Auto Bot blocked — Kill Switch ON');return}
+ botOn=!botOn;document.getElementById('bot').textContent=botOn?'ON':'OFF';addLog('Auto Bot '+(botOn?'enabled':'disabled'));
+}
+function kill(){
+ killed=true;botOn=false;document.getElementById('bot').textContent='OFF';addLog('KILL SWITCH ACTIVATED');
+}
+function details(sym){
+ let x=data.find(i=>i.s===sym);
+ alert(sym+'\nScore: '+x.score+'/100\nPrice: $'+x.p.toFixed(2)+'\nVWAP: $'+x.vwap.toFixed(2)+'\nRVOL: '+x.rvol.toFixed(1)+'x\nSpread: '+x.spread.toFixed(2)+'%');
+}
+renderStocks();renderPositions();updateTotals();addLog('Demo initialized — PAPER ONLY');
+</script>
+</body>
+</html>
