@@ -15,6 +15,10 @@ class Settings:
     enable_orders: bool = as_bool("ENABLE_PAPER_ORDERS", False)
     auto_paper_trading: bool = as_bool("AUTO_PAPER_TRADING", False)
     scan_interval_seconds: int = int(os.getenv("SCAN_INTERVAL_SECONDS", "60"))
+
+    option_alpha_webhook_url: str = os.getenv("OPTION_ALPHA_WEBHOOK_URL", "")
+    option_alpha_enabled: bool = as_bool("OPTION_ALPHA_ENABLED", False)
+
     paper_equity: float = float(os.getenv("PAPER_EQUITY", "20000"))
     risk_per_trade: float = float(os.getenv("RISK_PER_TRADE", "0.005"))
     max_daily_loss: float = float(os.getenv("MAX_DAILY_LOSS", "0.02"))
