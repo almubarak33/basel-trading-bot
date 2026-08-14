@@ -8,6 +8,7 @@ from .config import settings
 from .db import log_event
 from .scanner import scan
 from .strategy import position_size
+from .intelligence import enrich_candidate
 
 NY = ZoneInfo("America/New_York")
 AUTO_ENABLED = settings.auto_paper_trading
@@ -37,7 +38,7 @@ def state():
         "interval_seconds": settings.scan_interval_seconds,
         "armed_symbols": list(ARMED.keys()),
         "cooldown_symbols": list(COOLDOWNS.keys()),
-        "entry_model": "PULLBACK_RECLAIM_2_STAGE",
+        "entry_model": "INTELLIGENCE_ARM + PULLBACK_RECLAIM_2_STAGE",
     }
 
 
@@ -59,12 +60,20 @@ def _cooldown_active(symbol: str) -> bool:
 def _arm_or_confirm(candidate: dict) -> bool:
     symbol = candidate["symbol"].upper(); current = ARMED.get(symbol)
     if current is None:
-        ARMED[symbol] = {"count":1,"first_price":float(candidate["price"]),"first_score":float(candidate["score"])}
+        ARMED[symbol] = {
+            "count":1,
+            "first_price":float(candidate["price"]),
+            "first_score":float(candidate["score"]),
+            "intel_score":float(candidate.get("intel_score") or 0),
+            "grade":candidate.get("grade"),
+        }
         log_event("setup_armed", symbol, json.dumps(ARMED[symbol])); return False
     first_price=float(current.get("first_price",candidate["price"])); now_price=float(candidate["price"])
     if first_price>0 and (now_price/first_price-1)*100>1.0:
         ARMED.pop(symbol,None); log_event("setup_disarmed",symbol,json.dumps({"reason":"price_ran_away"})); return False
-    current["count"]=int(current.get("count",1))+1; current["latest_score"]=float(candidate["score"])
+    current["count"]=int(current.get("count",1))+1
+    current["latest_score"]=float(candidate["score"])
+    current["latest_intel_score"]=float(candidate.get("intel_score") or 0)
     if current["count"]>=2:
         ARMED.pop(symbol,None); return True
     return False
@@ -85,15 +94,21 @@ async def auto_loop():
                     elif _opening_delay_active():
                         log_event("opening_delay", None, json.dumps({"minutes": settings.opening_delay_minutes}))
                     else:
-                        rows = await scan()
+                        raw_rows = await scan()
+                        rows = [enrich_candidate(r) for r in raw_rows]
                         LAST_SCAN = datetime.now(timezone.utc).isoformat()
-                        eligible = [r for r in rows if r.get("eligible")]
+                        eligible = [
+                            r for r in rows
+                            if r.get("eligible") and r.get("decision",{}).get("action") == "ARM"
+                        ]
+                        eligible.sort(key=lambda r:(r.get("intel_score",0),r.get("score",0),r.get("rvol",0)),reverse=True)
                         LAST_CANDIDATE = eligible[0] if eligible else None
-                        log_event("auto_scan", None, json.dumps({"eligible":len(eligible)}))
+                        log_event("auto_scan", None, json.dumps({"intel_arm_candidates":len(eligible)}))
                         eligible_symbols={r["symbol"].upper() for r in eligible}
                         for symbol in list(ARMED.keys()):
                             if symbol not in eligible_symbols:
-                                ARMED.pop(symbol,None); log_event("setup_disarmed",symbol,json.dumps({"reason":"setup_failed_recheck"}))
+                                ARMED.pop(symbol,None)
+                                log_event("setup_disarmed",symbol,json.dumps({"reason":"intel_or_setup_failed_recheck"}))
                         if settings.enable_orders:
                             for candidate in eligible[:3]:
                                 symbol=candidate["symbol"].upper()
@@ -107,6 +122,8 @@ async def auto_loop():
 
 async def maybe_place_paper_order(candidate: dict):
     if not settings.paper or not settings.enable_orders: return
+    if candidate.get("decision",{}).get("action") != "ARM":
+        log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"intel_decision_not_arm"})); return
     if _opening_delay_active():
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"opening_delay"})); return
     risk_status=await alpaca.risk_status()
@@ -134,8 +151,16 @@ async def maybe_place_paper_order(candidate: dict):
         "limit_price":str(round(entry,2)),"order_class":"bracket",
         "take_profit":{"limit_price":str(round(target,2))},
         "stop_loss":{"stop_price":str(round(stop,2))},
-        "client_order_id":f"basel-smart-{symbol.lower()}",
+        "client_order_id":f"basel-intel-{symbol.lower()}",
     }
     result=await alpaca.submit_order(payload)
     COOLDOWNS[symbol]=datetime.now(timezone.utc)+timedelta(minutes=settings.symbol_cooldown_minutes)
-    log_event("smart_paper_order",symbol,json.dumps({"order":result,"setup":candidate.get("setup"),"score":candidate.get("score"),"rvol":candidate.get("rvol"),"entry":entry,"stop":stop,"target":target,"risk_pct":round(risk_pct,2)}))
+    log_event("smart_paper_order",symbol,json.dumps({
+        "order":result,
+        "setup":candidate.get("setup"),
+        "score":candidate.get("score"),
+        "intel_score":candidate.get("intel_score"),
+        "grade":candidate.get("grade"),
+        "rvol":candidate.get("rvol"),
+        "entry":entry,"stop":stop,"target":target,"risk_pct":round(risk_pct,2)
+    }))
