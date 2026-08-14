@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from app.orders import MAX_CLIENT_ORDER_ID, build_bracket_order, build_client_order_id
+from app.orders import MAX_CLIENT_ORDER_ID, build_bracket_order, build_client_order_id, build_runner_order
 
 
 # ---- client_order_id ----------------------------------------------------
@@ -81,7 +81,27 @@ def test_two_payloads_for_one_symbol_differ_only_by_id():
     assert first == second
 
 
-def test_engine_and_manual_paths_build_the_same_shape():
+def test_each_path_uses_its_intended_builder():
+    """The autonomous engine submits runner orders; the manual endpoint brackets.
+
+    They diverged on purpose — runner mode manages the upside itself — so this
+    pins which builder each path uses rather than asserting they match.
+    """
     from app import engine, main
-    assert engine.build_bracket_order is build_bracket_order
+    assert engine.build_runner_order is build_runner_order
     assert main.build_bracket_order is build_bracket_order
+
+
+def test_a_runner_order_carries_a_stop_but_no_take_profit():
+    """The defining property of runner mode: nothing caps the upside."""
+    payload = build_runner_order("aaaa", 10, 10.0, 9.5, source="intel")
+    assert payload["order_class"] == "oto"
+    assert payload["stop_loss"]["stop_price"] == "9.5"
+    assert "take_profit" not in payload
+
+
+def test_runner_orders_also_get_unique_ids():
+    """The client_order_id collision fix must cover both builders."""
+    ids = {build_runner_order("AAAA", 10, 10.0, 9.5, source="intel")["client_order_id"]
+           for _ in range(50)}
+    assert len(ids) == 50
