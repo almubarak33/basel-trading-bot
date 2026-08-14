@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F4F6FB">
+<meta name="theme-color" content="#050506">
 <title>بازل ترايدر</title>
 <link rel="manifest" href="/static/manifest.json">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236C5CE7'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23050506'/%3E%3Cpath d='M6 21l6-7 4 4 10-12' fill='none' stroke='%2327F2A3' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 @font-face{
   font-family:"The Year of Handicrafts";
@@ -126,7 +126,7 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
 .chip{border:1px solid var(--line);border-radius:999px;padding:6px 10px;
   font-size:11px;color:var(--ink2);background:var(--card)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.up{color:var(--up)} .down{color:var(--down)} .brandc{color:var(--brand)}
+.up{color:var(--up)} .down{color:var(--down)} .warn{color:var(--warn)} .muted{color:var(--muted)} .brandc{color:var(--brand)}
 
 /* ---------- مقياس دائري ---------- */
 .gauge{position:relative;width:88px;height:88px;flex:0 0 auto}
@@ -244,6 +244,155 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
 .err{color:var(--down);font-size:12px;margin-top:9px;font-weight:600}
 
 @media(min-width:620px){ .grid4{grid-template-columns:repeat(4,1fr)} }
+
+/* ============================================================
+   Basel Trader Command Center redesign
+   ============================================================ */
+:root{
+  --bg1:#F7F8FA; --bg2:#EEF2F3; --bg3:#F9FAFB;
+  --card:#FFFFFF; --card2:#F4F6F7;
+  --ink:#111315; --ink2:#3B4146; --muted:#737B84; --faint:#A5ADB5;
+  --line:#E4E8EC;
+  --brand:#111315; --brand-ink:#111315; --brand-soft:#ECEFF1;
+  --accent:#00B981; --accent-soft:#E3F8F0;
+  --metal:#B99245; --metal-soft:#F8F0DE;
+  --up:#00A66D; --up-soft:#DCF8EC;
+  --down:#E13F52; --down-soft:#FDE9ED;
+  --warn:#B77B18; --warn-soft:#FBF0D8;
+  --surface-blur:rgba(255,255,255,.76);
+  --r-xl:30px; --r-lg:24px; --r-md:18px; --r-sm:12px;
+  --sh:0 22px 60px rgba(18,22,26,.10),0 1px 1px rgba(18,22,26,.05);
+  --sh-sm:0 10px 28px rgba(18,22,26,.08);
+  color-scheme:light;
+}
+html[data-theme="dark"]{
+  --bg1:#050506; --bg2:#0A0B0D; --bg3:#101113;
+  --card:#15171A; --card2:#0E1012;
+  --ink:#F7F8FA; --ink2:#D5D8DD; --muted:#8D949D; --faint:#5F6872;
+  --line:#262A2F;
+  --brand:#F7F8FA; --brand-ink:#F7F8FA; --brand-soft:#24272C;
+  --accent:#27F2A3; --accent-soft:#10281F;
+  --metal:#D6B66A; --metal-soft:#2A2415;
+  --up:#27F2A3; --up-soft:#10281F;
+  --down:#FF5A6C; --down-soft:#2A1117;
+  --warn:#F3BF53; --warn-soft:#2A2111;
+  --surface-blur:rgba(9,10,11,.76);
+  --sh:0 30px 80px rgba(0,0,0,.42),0 1px 0 rgba(255,255,255,.04) inset;
+  --sh-sm:0 18px 44px rgba(0,0,0,.28);
+  color-scheme:dark;
+}
+body{
+  background:
+    radial-gradient(circle at 78% -10%, color-mix(in srgb,var(--accent) 18%,transparent) 0 24%, transparent 42%),
+    radial-gradient(circle at 6% 12%, color-mix(in srgb,var(--metal) 16%,transparent) 0 18%, transparent 36%),
+    linear-gradient(180deg,var(--bg1),var(--bg2) 44%,var(--bg3));
+}
+.wrap{max-width:1180px;padding:20px 18px 118px}
+.top{
+  position:sticky;top:0;z-index:12;margin:0 -18px 10px;padding:12px 18px;
+  background:linear-gradient(180deg,var(--surface-blur),color-mix(in srgb,var(--surface-blur) 72%,transparent));
+  backdrop-filter:saturate(160%) blur(22px);border-bottom:1px solid color-mix(in srgb,var(--line) 72%,transparent)
+}
+.logo{
+  position:relative;overflow:hidden;background:linear-gradient(145deg,var(--ink),color-mix(in srgb,var(--ink) 60%,var(--accent)));
+  color:var(--bg1);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent);
+  box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 8%,transparent),0 18px 36px color-mix(in srgb,var(--accent) 10%,transparent);
+  font-size:0
+}
+.logo::before{content:"BT";font-size:13px;font-weight:900;letter-spacing:.8px}
+.logo::after{content:"";position:absolute;inset:9px 8px auto auto;width:14px;height:2px;background:var(--accent);transform:rotate(-32deg);border-radius:9px}
+.brand h1{font-size:18px;font-weight:900;letter-spacing:0}
+.brand p{font-size:11.5px}
+.iconbtn{
+  border:1px solid var(--line);background:color-mix(in srgb,var(--card) 84%,transparent);
+  backdrop-filter:blur(10px);box-shadow:none;border-radius:14px
+}
+#themeBtn{width:auto;min-width:54px;padding:0 12px;font-size:12px;font-weight:900}
+.card,.sig,.hero,.tile,.scn{
+  border:1px solid color-mix(in srgb,var(--line) 86%,transparent);
+  box-shadow:var(--sh);background:linear-gradient(180deg,color-mix(in srgb,var(--card) 96%,white 4%),var(--card));
+}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .sig,
+html[data-theme="dark"] .hero,
+html[data-theme="dark"] .tile,
+html[data-theme="dark"] .scn{
+  background:linear-gradient(180deg,color-mix(in srgb,var(--card) 94%,white 3%),var(--card2));
+}
+.label{text-transform:uppercase;letter-spacing:.7px}
+.pill,.chip,.badge{border:1px solid color-mix(in srgb,currentColor 14%,var(--line))}
+.btn,.pill,.chip,.badge,.iconbtn,.tb,.tabs button{transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease}
+.btn:active,.pill:active,.iconbtn:active,.tb:active,.tabs button:active,.tile:active,.sig:active,.hero:active{transform:scale(.98)}
+.command{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);gap:16px;margin-top:14px}
+.command-main{
+  position:relative;overflow:hidden;border-radius:var(--r-xl);padding:22px;
+  background:
+    linear-gradient(135deg,color-mix(in srgb,var(--card) 94%,transparent),color-mix(in srgb,var(--card2) 90%,transparent)),
+    radial-gradient(circle at 16% 16%,color-mix(in srgb,var(--accent) 20%,transparent),transparent 34%);
+  border:1px solid color-mix(in srgb,var(--accent) 22%,var(--line));box-shadow:var(--sh);
+}
+.command-main::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);pointer-events:none}
+.command-kicker{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:12px;font-weight:800}
+.live-dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 6px color-mix(in srgb,currentColor 12%,transparent)}
+.command-title{margin:16px 0 0;font-size:clamp(30px,4.4vw,58px);line-height:1.02;font-weight:900;letter-spacing:0}
+.command-copy{max-width:620px;margin:12px 0 0;color:var(--ink2);font-size:14px;line-height:1.85}
+.command-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.status-dock{display:grid;gap:12px}
+.status-card{border-radius:var(--r-lg);padding:16px;background:var(--card);border:1px solid var(--line);box-shadow:var(--sh-sm)}
+.status-card.major{background:linear-gradient(160deg,color-mix(in srgb,var(--accent-soft) 48%,var(--card)),var(--card))}
+.status-card .row{align-items:flex-start}
+.metric-wall{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+.metric-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:15px;box-shadow:var(--sh-sm);min-height:118px}
+.metric-card.accent{background:linear-gradient(160deg,var(--accent-soft),var(--card));border-color:color-mix(in srgb,var(--accent) 28%,var(--line))}
+.metric-card.danger{background:linear-gradient(160deg,var(--down-soft),var(--card));border-color:color-mix(in srgb,var(--down) 28%,var(--line))}
+.metric-card.metal{background:linear-gradient(160deg,var(--metal-soft),var(--card));border-color:color-mix(in srgb,var(--metal) 28%,var(--line))}
+.metric-icon{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;background:var(--card2);border:1px solid var(--line);margin-bottom:12px}
+.metric-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9}
+.ops-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.44fr);gap:14px;margin-top:16px}
+.section-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;box-shadow:var(--sh-sm)}
+.panel-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.panel-title h3{margin:0;font-size:15px;font-weight:900}
+.stack{display:grid;gap:8px}
+.stack-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.stack-item:last-child{border-bottom:0}
+.stack-name{font-size:12.5px;font-weight:800}
+.stack-note{font-size:10.5px;color:var(--muted);margin-top:2px}
+.timeline{display:grid;gap:8px}
+.step{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.step-dot{width:26px;height:26px;border-radius:10px;display:grid;place-items:center;background:var(--accent-soft);color:var(--up);font-size:11px;font-weight:900;border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line))}
+.step b{font-size:12.5px}.step span{font-size:10.5px;color:var(--muted)}
+.pro-band{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.hero{background:linear-gradient(145deg,color-mix(in srgb,var(--accent-soft) 66%,var(--card)),var(--card));border-color:color-mix(in srgb,var(--accent) 28%,var(--line))}
+.hero-n{font-weight:900}
+.sig{border-radius:22px}.sig:hover,.hero:hover,.tile:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.tile{min-height:120px;justify-content:center}.tile .ti{border:1px solid var(--line);background:var(--card2) !important}
+.tabbar{background:var(--surface-blur);backdrop-filter:saturate(160%) blur(24px)}
+.tabbar-in{max-width:1180px}
+.tb{min-width:78px}.tb.on{background:var(--ink);color:var(--bg1)}
+html[data-theme="dark"] .tb.on{background:#F7F8FA;color:#050506}
+.tabs{background:var(--card2);border:1px solid var(--line)}
+.tabs button.on{background:var(--ink);color:var(--bg1)}
+html[data-theme="dark"] .tabs button.on{background:#F7F8FA;color:#050506}
+.gate{min-height:100vh;display:grid;align-content:center}
+.gate .card{border-radius:28px;padding:22px}
+.gate input{background:var(--card);border-radius:16px}
+@media(max-width:940px){
+  .command,.ops-layout{grid-template-columns:1fr}
+  .metric-wall{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:620px){
+  .wrap{padding:14px 12px 108px}
+  .top{margin:0 -12px 8px;padding:10px 12px}
+  .command-main{padding:18px;border-radius:24px}
+  .metric-wall,.section-grid{grid-template-columns:1fr 1fr}
+  .command-title{font-size:34px}
+  .tb{padding:7px 8px;min-width:0}
+}
+@media(max-width:420px){
+  .metric-wall,.section-grid,.grid2,.grid3{grid-template-columns:1fr}
+  .meta4{grid-template-columns:1fr 1fr}
+}
 </style>
 </head>
 <body>
@@ -251,8 +400,8 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
 <!-- ══════════ الدخول ══════════ -->
 <div class="gate" id="login" hidden>
   <div class="brand">
-    <div class="logo">📈</div>
-    <div><h1>بازل ترايدر</h1><p>ذكاء تداول آلي · تجريبي أولاً</p></div>
+    <div class="logo"></div>
+    <div><h1>بازل ترايدر</h1><p>منصة تداول آلي احترافية · تجريبي أولاً</p></div>
   </div>
   <form class="card" onsubmit="doLogin(event)">
     <h3 style="margin:0 0 4px;font-size:18px">تسجيل الدخول</h3>
@@ -273,97 +422,163 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
 
   <div class="top">
     <div class="brand">
-      <div class="logo">📈</div>
-      <div><h1>بازل ترايدر</h1><p id="greet">ذكاء تداول آلي · تجريبي أولاً</p></div>
+      <div class="logo"></div>
+      <div><h1>Basel Trader</h1><p id="greet">منصة تداول آلي احترافية</p></div>
     </div>
     <div style="display:flex;gap:7px;align-items:center">
-      <button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="الوضع">🌙</button>
+      <button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="الوضع">داكن</button>
       <button class="iconbtn" onclick="logout()" title="خروج">⏻</button>
     </div>
   </div>
 
   <!-- ─── الرئيسية ─── -->
   <section id="home">
-    <div class="card tight">
-      <div class="row">
-        <div style="display:flex;align-items:center;gap:9px">
-          <span id="mktDot" style="width:9px;height:9px;border-radius:50%;background:var(--up);display:inline-block"></span>
-          <b id="marketState" style="font-size:14px">—</b>
+    <div class="command">
+      <div class="command-main">
+        <div class="command-kicker">
+          <span class="live-dot" id="mktDot" style="background:var(--up);color:var(--up)"></span>
+          <span id="marketState">—</span>
+          <span class="pill" id="modeTag">—</span>
         </div>
-        <span class="pill" id="modeTag">—</span>
+        <h2 class="command-title">Command Center للتداول الآلي</h2>
+        <p class="command-copy">
+          لوحة قيادة واحدة تجمع الرادار الذكي، إدارة المخاطر، جودة التنفيذ، ومراقبة المحرك.
+          مصممة لتشغيل تجريبي منضبط قبل أي توسع حقيقي.
+        </p>
+        <div class="command-actions">
+          <button class="btn primary" style="width:auto;padding-inline:18px" onclick="go('radarPage')">فتح الرادار</button>
+          <button class="btn ghost" style="width:auto;padding-inline:18px" onclick="go('marketPage')">قراءة السوق</button>
+          <button class="btn danger" style="width:auto;padding-inline:18px" onclick="kill()">إيقاف طارئ</button>
+        </div>
+        <div class="pro-band">
+          <span class="badge ok">Two-stage arming</span>
+          <span class="badge info">Bracket orders</span>
+          <span class="badge warn">Daily loss guard</span>
+          <span class="badge mute">Paper-first execution</span>
+        </div>
       </div>
-      <div class="sub num" id="nextClose" style="margin-top:7px">—</div>
-      <div class="row" style="margin-top:11px;padding-top:11px;border-top:1px solid var(--line)">
-        <span class="label">حالة المحرك</span>
-        <span class="badge" id="engineState">—</span>
+
+      <div class="status-dock">
+        <div class="status-card major">
+          <div class="row">
+            <div>
+              <div class="label">حالة المحرك</div>
+              <div class="val sm" id="engineState">—</div>
+            </div>
+            <span class="badge" id="engineQuality">Guarded</span>
+          </div>
+          <div class="sub" id="engineHint" style="margin-top:9px" hidden></div>
+        </div>
+        <div class="status-card">
+          <div class="label">نافذة الجلسة</div>
+          <div class="val sm num" id="nextClose">—</div>
+        </div>
+        <div class="status-card">
+          <div class="row">
+            <div><div class="label">حد الدخول</div><b class="num" id="minScore">—</b></div>
+            <div><div class="label">RVOL</div><b class="num" id="minRvol">—</b></div>
+            <div><div class="label">تأخير الافتتاح</div><b class="num" id="openingDelay">—</b></div>
+          </div>
+        </div>
       </div>
-      <div class="sub" id="engineHint" style="margin-top:8px" hidden></div>
     </div>
 
-    <div class="grid2" style="margin-top:12px">
-      <div class="card tight" style="margin:0">
+    <div class="metric-wall">
+      <div class="metric-card accent">
+        <div class="metric-icon"><svg viewBox="0 0 24 24"><path d="M4 17l6-6 4 4 6-8"/><path d="M20 7v6h-6"/></svg></div>
         <div class="label">رأس المال</div>
         <div class="val num" id="equity">—</div>
         <div class="sub num" id="dayPnl">—</div>
       </div>
-      <div class="card tight" style="margin:0">
+      <div class="metric-card danger">
+        <div class="metric-icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 5-3.4 7.8-8 9-4.6-1.2-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-5"/></svg></div>
         <div class="label">المخاطرة اليومية</div>
         <div class="val num" id="drawdown">—</div>
         <div class="sub" id="guard">—</div>
       </div>
+      <div class="metric-card">
+        <div class="metric-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></div>
+        <div class="label">إشارات اليوم</div>
+        <div class="val num" id="radarCount">0</div>
+        <div class="sub">جاهزة للدخول <span class="num" id="armCount">—</span></div>
+      </div>
+      <div class="metric-card metal">
+        <div class="metric-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M8 17V9"/><path d="M12 19V4"/><path d="M16 16v-6"/><path d="M20 19V8"/></svg></div>
+        <div class="label">جودة الرادار</div>
+        <div class="val num" id="avgIntel">—</div>
+        <div class="sub">الأعلى تقييماً <b class="num" id="topSym">—</b></div>
+      </div>
     </div>
 
-    <!-- إشارات اليوم -->
-    <div class="card">
-      <div style="display:flex;gap:16px;align-items:center">
-        <div style="text-align:center;flex:0 0 auto">
-          <div class="val lg num brandc" id="radarCount">0</div>
-          <div class="label" style="margin-top:2px">إشارات اليوم</div>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div class="grid3">
-            <div><div class="label">الأعلى تقييماً</div><div class="val sm" id="topSym">—</div></div>
-            <div><div class="label">متوسط التقييم</div><div class="val sm num" id="avgIntel">—</div></div>
-            <div><div class="label">جاهزة للدخول</div><div class="val sm num" id="armCount">—</div></div>
+    <div class="panel" style="margin-top:14px">
+      <div class="panel-title"><h3>توزيع جودة الفرص</h3><span class="badge mute">Grades</span></div>
+      <div class="grid4" id="gradeSplit"></div>
+    </div>
+
+    <div class="ops-layout">
+      <div>
+        <div class="sec-h"><div><h2>أقوى إشارة الآن</h2><div class="sub">المرشح الأعلى بعد الفلاتر الفنية والسيولة والمخاطرة</div></div></div>
+        <div id="topSignal"></div>
+
+        <div class="sec-h"><div><h2>محفظة التنفيذ</h2><div class="sub">أداء الصفقات، التعرض، وربحية النظام</div></div>
+          <button class="pill" onclick="go('logPage')">التفاصيل</button></div>
+        <div class="section-grid">
+          <div class="panel">
+            <div class="panel-title"><h3>أداء التداول</h3><span class="badge info" id="portfolioHealth">Live stats</span></div>
+            <div class="grid3">
+              <div><div class="label">نسبة النجاح</div><div class="val sm num" id="winRate">—</div></div>
+              <div><div class="label">معامل الربح</div><div class="val sm num" id="profitFactor">—</div></div>
+              <div><div class="label">التعرّض</div><div class="val sm num" id="exposure">—</div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><h3>المراكز</h3><span class="badge mute">Portfolio</span></div>
+            <div class="stack">
+              <div class="stack-item"><div><div class="stack-name">صفقات مفتوحة</div><div class="stack-note">تدار آلياً بالوقف والهدف</div></div><b class="num" id="openCount">—</b></div>
+              <div class="stack-item"><div><div class="stack-name">صفقات مغلقة</div><div class="stack-note">سجل الأداء التاريخي</div></div><b class="num" id="closedCount">—</b></div>
+              <div class="stack-item"><div><div class="stack-name">ربح غير محقّق</div><div class="stack-note">يتغير مع السعر الحالي</div></div><b class="num" id="openPnl">—</b></div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="grid4" id="gradeSplit" style="margin-top:14px;padding-top:13px;border-top:1px solid var(--line)"></div>
+
+      <aside>
+        <div class="sec-h"><div><h2>حزمة الأتمتة</h2><div class="sub">كل وحدة تشغيل ومراقبة في مكان واحد</div></div></div>
+        <div class="panel">
+          <div class="stack" id="automationStack"></div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-title"><h3>دورة القرار</h3><span class="badge ok">Autopilot</span></div>
+          <div class="timeline">
+            <div class="step"><span class="step-dot">1</span><div><b>مسح السوق</b><span>سيولة، حجم، حركة، واتجاه عام</span></div><span class="badge mute">Scan</span></div>
+            <div class="step"><span class="step-dot">2</span><div><b>فلترة الجودة</b><span>تقييم ذكي ومخاطرة محسوبة</span></div><span class="badge mute">Score</span></div>
+            <div class="step"><span class="step-dot">3</span><div><b>تسليح الإشارة</b><span>تأكيد على مسحين قبل التنفيذ</span></div><span class="badge mute">Arm</span></div>
+            <div class="step"><span class="step-dot">4</span><div><b>تنفيذ وإدارة</b><span>أمر Bracket، خروج آلي، وإغلاق نهاية اليوم</span></div><span class="badge mute">Manage</span></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-title"><h3>حواجز المخاطر</h3><span class="badge warn">Risk</span></div>
+          <div class="stack">
+            <div class="stack-item"><div><div class="stack-name">مخاطرة الصفقة</div><div class="stack-note">حجم المركز يحسب من الوقف</div></div><b class="num" id="riskPerTrade">—</b></div>
+            <div class="stack-item"><div><div class="stack-name">حد الخسارة اليومي</div><div class="stack-note">إيقاف تلقائي عند تجاوزه</div></div><b class="num" id="maxDailyLoss">—</b></div>
+          </div>
+        </div>
+      </aside>
     </div>
 
-    <!-- أقوى إشارة -->
-    <div class="sec-h"><div><h2>أقوى إشارة</h2><div class="sub">أعلى تقييم ذكاء اليوم</div></div></div>
-    <div id="topSignal"></div>
-
-    <!-- المحفظة -->
-    <div class="sec-h"><div><h2>المحفظة</h2><div class="sub">أداء الصفقات المفتوحة والمغلقة</div></div>
-      <button class="pill" onclick="go('logPage')">التفاصيل</button></div>
-    <div class="card">
-      <div class="grid3">
-        <div><div class="label">نسبة النجاح</div><div class="val sm num" id="winRate">—</div></div>
-        <div><div class="label">معامل الربح</div><div class="val sm num" id="profitFactor">—</div></div>
-        <div><div class="label">التعرّض</div><div class="val sm num" id="exposure">—</div></div>
-      </div>
-      <div class="divide" style="margin-top:13px;padding-top:11px;border-top:1px solid var(--line)">
-        <div class="row"><span class="sub">صفقات مفتوحة</span><b class="num" id="openCount">—</b></div>
-        <div class="row"><span class="sub">صفقات مغلقة</span><b class="num" id="closedCount">—</b></div>
-        <div class="row"><span class="sub">ربح غير محقّق</span><b class="num" id="openPnl">—</b></div>
-      </div>
-    </div>
-
-    <div class="grid4" style="margin-top:14px">
+    <div class="grid4" style="margin-top:16px">
       <button class="tile" onclick="go('radarPage')">
-        <div class="ti" style="background:var(--brand-soft);color:var(--brand)">🎯</div>
+        <div class="ti" style="color:var(--brand)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M21 12h-3M12 21v-3M3 12h3"/></svg></div>
         <b>الرادار</b><span>كل الإشارات</span></button>
       <button class="tile" onclick="go('marketPage')">
-        <div class="ti" style="background:var(--up-soft);color:var(--up)">📊</div>
-        <b>السوق</b><span>حالة عامة</span></button>
+        <div class="ti" style="color:var(--up)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"><path d="M4 17l6-6 4 4 6-8"/><path d="M20 7v6h-6"/></svg></div>
+        <b>السوق</b><span>نبض واتجاه</span></button>
       <button class="tile" onclick="go('logPage')">
-        <div class="ti" style="background:var(--warn-soft);color:var(--warn)">📁</div>
-        <b>السجل</b><span>الصفقات</span></button>
+        <div class="ti" style="color:var(--warn)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+        <b>السجل</b><span>صفقات وأحداث</span></button>
       <button class="tile" onclick="kill()">
-        <div class="ti" style="background:var(--down-soft);color:var(--down)">🛑</div>
-        <b>إيقاف</b><span>طارئ</span></button>
+        <div class="ti" style="color:var(--down)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"><path d="M12 3v8"/><path d="M6.8 6.8a7 7 0 1010.4 0"/></svg></div>
+        <b>إيقاف</b><span>حماية فورية</span></button>
     </div>
   </section>
 
@@ -371,6 +586,39 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
   <section id="radarPage" hidden>
     <div class="sec-h"><div><h2>الرادار الذكي</h2>
       <div class="sub">الجودة أولاً: التوقيت + السيولة + الهيكل + المخاطرة</div></div></div>
+    <div class="metric-wall">
+      <div class="metric-card">
+        <div class="label">كل الفرص</div>
+        <div class="val num" id="radarTotal">—</div>
+        <div class="sub">بعد الفلاتر الأولية</div>
+      </div>
+      <div class="metric-card accent">
+        <div class="label">جاهزة للدخول</div>
+        <div class="val num" id="radarReady">—</div>
+        <div class="sub">ARM بعد تأكيد الجودة</div>
+      </div>
+      <div class="metric-card metal">
+        <div class="label">تحت المراقبة</div>
+        <div class="val num" id="radarWatch">—</div>
+        <div class="sub">تنتظر شرطاً إضافياً</div>
+      </div>
+      <div class="metric-card danger">
+        <div class="label">مستبعدة</div>
+        <div class="val num" id="radarAvoid">—</div>
+        <div class="sub">مخاطرة أو جودة ضعيفة</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="panel-title"><h3>فلاتر احترافية مفعّلة</h3><span class="badge ok">Quality Gates</span></div>
+      <div class="pro-band" style="margin-top:0">
+        <span class="chip">سيولة و RVOL</span>
+        <span class="chip">VWAP والامتداد</span>
+        <span class="chip">ضيق السبريد</span>
+        <span class="chip">نسبة العائد للمخاطرة</span>
+        <span class="chip">اتجاه السوق العام</span>
+        <span class="chip">تأكيد ثنائي قبل الدخول</span>
+      </div>
+    </div>
     <div class="tabs" id="radarTabs">
       <button class="on" onclick="filterRadar('all',this)">الكل</button>
       <button onclick="filterRadar('ARM',this)">دخول</button>
@@ -396,6 +644,24 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
         </div>
       </div>
       <div class="sub" id="briefText" style="margin-top:13px;line-height:1.7">—</div>
+    </div>
+
+    <div class="sec-h"><div><h2>جاهزية التنفيذ</h2><div class="sub">كل بوابات الأمان قبل أي أمر تجريبي</div></div></div>
+    <div class="section-grid">
+      <div class="panel">
+        <div class="panel-title"><h3>وضع الأوامر</h3><span class="badge" id="executionMode">—</span></div>
+        <div class="stack">
+          <div class="stack-item"><div><div class="stack-name">أوامر Paper</div><div class="stack-note">لا يرسل أوامر حقيقية في هذا الوضع</div></div><b id="ordersSwitch">—</b></div>
+          <div class="stack-item"><div><div class="stack-name">Option Alpha</div><div class="stack-note">ربط Webhook خارجي عند تفعيله</div></div><b id="optionAlpha">—</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title"><h3>الحماية التشغيلية</h3><span class="badge warn">Safety</span></div>
+        <div class="stack">
+          <div class="stack-item"><div><div class="stack-name">الإيقاف الطارئ</div><div class="stack-note">يعطل المحرك ويغلق المراكز عند الطلب</div></div><b id="killStatus">—</b></div>
+          <div class="stack-item"><div><div class="stack-name">حالة المخاطرة</div><div class="stack-note">توقف تلقائي عند تجاوز الحد اليومي</div></div><b id="riskGate">—</b></div>
+        </div>
+      </div>
     </div>
 
     <!-- شفافية الحساب -->
@@ -484,7 +750,7 @@ const tcs=list=>(list||[]).map(tc);
 
 /* أوسمة تقييمية: الرقم الخام لا يعني شيئاً بلا حكم عليه */
 function rvolBadge(v){ v=Number(v)||0;
-  if(v>=5) return ['hot','🔥 استثنائي']; if(v>=3) return ['ok','قوي'];
+  if(v>=5) return ['hot','استثنائي']; if(v>=3) return ['ok','قوي'];
   if(v>=2) return ['info','جيد']; return ['mute','ضعيف']; }
 function spreadBadge(v){ v=Number(v)||99;
   if(v<=0.20) return ['ok','ضيق']; if(v<=0.45) return ['info','مقبول']; return ['hot','واسع']; }
@@ -545,8 +811,8 @@ async function checkSession(){
 
 /* الثيم */
 function setTheme(t){ document.documentElement.dataset.theme=t;
-  $('themeBtn').textContent=t==='dark'?'☀️':'🌙'; localStorage.setItem('theme',t);
-  document.querySelector('meta[name=theme-color]').setAttribute('content',t==='dark'?'#0B1220':'#F4F6FB'); }
+  $('themeBtn').textContent=t==='dark'?'فاتح':'داكن'; localStorage.setItem('theme',t);
+  document.querySelector('meta[name=theme-color]').setAttribute('content',t==='dark'?'#050506':'#F7F8FA'); }
 function toggleTheme(){ setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'); }
 
 /* التنقّل */
@@ -642,16 +908,20 @@ function render(d){
 
   /* الترويسة */
   const h=new Date().getHours();
-  $('greet').textContent=(h<12?'صباح الخير':h<18?'مساء الخير':'مساء الخير')+' · ذكاء تداول آلي';
+  $('greet').textContent=(h<12?'صباح الخير':h<18?'مساء الخير':'مساء الخير')+' · Command Center';
   $('modeTag').textContent=d.simulation?'محاكاة':'تجريبي مباشر';
   $('marketState').textContent=st.market_open?'السوق مفتوح':'السوق مغلق';
   $('mktDot').style.background=st.market_open?'var(--up)':'var(--faint)';
+  $('mktDot').style.color=st.market_open?'var(--up)':'var(--faint)';
   /* لماذا لا يتداول: البوابات كانت تخرج بصمت، فيبدو الانتظار والعطل سواء */
   const eng=st.engine||{}, why=eng.idle_reason||'starting';
   const good=new Set(['working','awaiting_confirmation']);
   const wait=new Set(['market_closed','opening_delay','entry_window_closed','no_arm_candidates','starting']);
   $('engineState').textContent=tcode('idle_'+why)||why;
-  $('engineState').className='badge '+(good.has(why)?'ok':wait.has(why)?'warn':'hot');
+  const engineClass=good.has(why)?'ok':wait.has(why)?'warn':'hot';
+  $('engineState').className='val sm '+(engineClass==='hot'?'down':engineClass==='ok'?'up':'');
+  $('engineQuality').className='badge '+engineClass;
+  $('engineQuality').textContent=engineClass==='ok'?'نشط':engineClass==='warn'?'مراقبة':'يتطلب إجراء';
   const hints={
     not_configured:'أضف ALPACA_API_KEY و ALPACA_API_SECRET في متغيرات البيئة على الخادم، ثم أعد النشر.',
     auto_disabled:'التداول التلقائي مُطفأ — فعّله من الإعدادات أو أعد ضبط AUTO_PAPER_TRADING.',
@@ -666,6 +936,11 @@ function render(d){
   $('nextClose').textContent=st.next_close
     ? 'الإغلاق القادم · '+new Date(st.next_close).toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit'})
     : (st.market_open?'الجلسة جارية':'خارج ساعات التداول');
+  $('minScore').textContent=st.min_score!=null?nf(st.min_score,0):'—';
+  $('minRvol').textContent=st.min_rvol!=null?ltr(nf(st.min_rvol,1)+'×'):'—';
+  $('openingDelay').textContent=st.opening_delay_minutes!=null?st.opening_delay_minutes+'د':'—';
+  $('riskPerTrade').textContent=st.risk_per_trade_pct!=null?nf(st.risk_per_trade_pct,2)+'%':'—';
+  $('maxDailyLoss').textContent=st.max_daily_loss_pct!=null?nf(st.max_daily_loss_pct,2)+'%':'—';
 
   /* رأس المال */
   $('equity').textContent=money(st.equity);
@@ -680,7 +955,13 @@ function render(d){
   const radar=d.radar||[];
   $('radarCount').textContent=radar.length;
   const arms=radar.filter(r=>(r.decision||{}).action==='ARM');
+  const watches=radar.filter(r=>(r.decision||{}).action==='WATCH');
+  const avoids=radar.filter(r=>(r.decision||{}).action==='AVOID');
   $('armCount').textContent=arms.length;
+  $('radarTotal').textContent=radar.length;
+  $('radarReady').textContent=arms.length;
+  $('radarWatch').textContent=watches.length;
+  $('radarAvoid').textContent=avoids.length;
   $('topSym').textContent=(radar[0]||{}).symbol||'—';
   $('avgIntel').textContent=radar.length?nf(radar.reduce((s,r)=>s+(r.intel_score||0),0)/radar.length,0):'—';
   const gr={};(radar).forEach(r=>{gr[r.grade||'?']=(gr[r.grade||'?']||0)+1});
@@ -693,7 +974,7 @@ function render(d){
   /* أقوى إشارة */
   const top=d.top_signal;
   $('topSignal').innerHTML = top ? `<button class="hero" onclick="openStock('${esc(top.symbol)}')">
-      <div class="row"><span class="badge info">🏆 الأعلى تقييماً</span>
+      <div class="row"><span class="badge info">الأعلى تقييماً</span>
         <span class="badge ${((top.decision||{}).action==='ARM')?'ok':'warn'}">${(top.decision||{}).action==='ARM'?'دخول':'مراقبة'}</span></div>
       <div style="display:flex;align-items:baseline;gap:11px;margin-top:13px">
         <span class="hero-n num ${cls(top.change_pct)}">${pct(top.change_pct,1)}</span>
@@ -710,6 +991,9 @@ function render(d){
   $('winRate').textContent=nf(pf.win_rate_pct||0,0)+'%';
   $('profitFactor').textContent=isFinite(pf.profit_factor)?nf(pf.profit_factor,2):'∞';
   $('exposure').textContent=nf(pf.exposure_pct||0,1)+'%';
+  const pfGood=(pf.win_rate_pct||0)>=50 || (pf.profit_factor||0)>=1.2;
+  $('portfolioHealth').className='badge '+(pfGood?'ok':'warn');
+  $('portfolioHealth').textContent=pfGood?'متوازن':'تحت المراقبة';
   $('openCount').textContent=pf.open_positions??0;
   $('closedCount').textContent=pf.closed_trades??0;
   const op=pf.open_pnl||0;
@@ -729,6 +1013,13 @@ function render(d){
   $('briefText').textContent=tcode(brief.text_code)||brief.text||'';
   $('liveTag').className='badge '+(st.market_open?'ok':'mute');
   $('liveTag').textContent=st.market_open?'● مباشر':'● مغلق';
+  $('executionMode').className='badge '+(st.mode==='PAPER'?'ok':'warn');
+  $('executionMode').textContent=st.mode||'—';
+  $('ordersSwitch').innerHTML=st.orders_enabled?'<span class="up">مفعّلة</span>':'<span class="down">معطلة</span>';
+  $('optionAlpha').innerHTML=st.option_alpha_enabled&&st.option_alpha_configured?'<span class="up">متصل</span>':
+    st.option_alpha_configured?'<span class="warn">جاهز غير مفعّل</span>':'<span class="muted">غير مربوط</span>';
+  $('killStatus').innerHTML=st.kill_switch?'<span class="down">مفعّل</span>':'<span class="up">غير مفعّل</span>';
+  $('riskGate').innerHTML=(st.risk_status||{}).blocked?'<span class="down">محظور</span>':'<span class="up">مسموح</span>';
 
   const det=reg.details||{};
   $('pulseHow').innerHTML=['SPY','QQQ'].map(s=>{
@@ -754,6 +1045,16 @@ function render(d){
     market_regime:'حالة السوق',catalyst_feed:'المحفزات',microstructure:'البنية الدقيقة',
     strategy_selector:'اختيار الاستراتيجية',insider_sec:'تداولات الداخليين',
     paper_execution:'التنفيذ التجريبي',autonomous_entry:'دخول تلقائي',autonomous_exit:'خروج تلقائي'};
+  const mnotes={smart_radar:'فرز الفرص حسب الجودة',smart_map:'خريطة قرار متعددة العوامل',
+    risk_engine:'حجم مركز وحد خسارة',market_regime:'فلتر اتجاه السوق العام',
+    catalyst_feed:'أخبار ومحفزات',microstructure:'سيولة وسبريد وحجم',
+    strategy_selector:'اختيار نمط الدخول',insider_sec:'مصدر غير مفعّل حالياً',
+    paper_execution:'تنفيذ آمن قبل الحقيقي',autonomous_entry:'دخول مشروط ومسلّح',
+    autonomous_exit:'وقف، هدف، وحماية أرباح'};
+  $('automationStack').innerHTML=Object.entries(d.modules||{}).map(([k,v])=>
+    `<div class="stack-item"><div><div class="stack-name">${esc(mnames[k]||k)}</div>
+      <div class="stack-note">${esc(mnotes[k]||'وحدة تشغيل')}</div></div>
+      <span class="badge ${v?'ok':'mute'}">${v?'مفعّل':'غير مفعّل'}</span></div>`).join('');
   $('modules').innerHTML=Object.entries(d.modules||{}).map(([k,v])=>
     `<span class="chip" style="${v?'':'opacity:.45'}">${v?'●':'○'} ${esc(mnames[k]||k)}</span>`).join('');
 
@@ -875,19 +1176,19 @@ function renderStock(){
         <div><div class="label">الربح</div><div class="val sm num ${cls(pos.pnl)}">${money(pos.pnl)}</div></div>
       </div></div>`:''}
 
-    <div class="card"><div class="card-h"><div class="ic">📈</div><h3>حركة الجلسة</h3></div>
+    <div class="card"><div class="card-h"><div class="ic">CH</div><h3>حركة الجلسة</h3></div>
       ${candles(s.bars)}</div>
 
-    <div class="card"><div class="card-h"><div class="ic">🗺️</div><h3>المستويات الرئيسية</h3>
+    <div class="card"><div class="card-h"><div class="ic">LV</div><h3>المستويات الرئيسية</h3>
       <span class="badge ${act==='ARM'?'ok':'mute'}">${nf(c.risk_pct,2)}% مخاطرة</span></div>
       ${levelLadder(c)}
       <div class="note">المسافة من السعر الحالي إلى كل مستوى. الوقف يحدد حجم الخسارة، والهدف يحدد العائد.</div>
     </div>
 
-    <div class="card"><div class="card-h"><div class="ic">🧭</div><h3>السيناريوهات المحتملة</h3></div>
+    <div class="card"><div class="card-h"><div class="ic">SC</div><h3>السيناريوهات المحتملة</h3></div>
       ${scenarios(c)||'<div class="empty">لا تتوفر مستويات كافية.</div>'}</div>
 
-    <div class="card"><div class="card-h"><div class="ic">📊</div><h3>بيانات السوق</h3></div>
+    <div class="card"><div class="card-h"><div class="ic">MK</div><h3>بيانات السوق</h3></div>
       <div class="grid2">
         <div class="cell"><div class="label">الحجم النسبي</div>
           <div class="val sm num">${ltr(nf(c.rvol,1)+'×')}</div>${B(rvolBadge(c.rvol))}</div>
@@ -902,7 +1203,7 @@ function renderStock(){
     </div>
 
     ${tcs(c.bull_codes).length||tcs(c.bear_codes).length?`<div class="card">
-      <div class="card-h"><div class="ic">💡</div><h3>لماذا هذه الإشارة؟</h3></div>
+      <div class="card-h"><div class="ic">AI</div><h3>لماذا هذه الإشارة؟</h3></div>
       ${tcs(c.bull_codes).length?`<div class="label">عوامل داعمة</div>
         <div class="chips">${tcs(c.bull_codes).map(t=>`<span class="chip up">${esc(t)}</span>`).join('')}</div>`:''}
       ${tcs(c.bear_codes).length?`<div class="label" style="margin-top:13px">عوامل مقلقة</div>
@@ -911,7 +1212,7 @@ function renderStock(){
     </div>`:''}
 
     ${tcs(c.reject_codes).length?`<div class="card">
-      <div class="card-h"><div class="ic">⛔</div><h3>أسباب الرفض</h3></div>
+      <div class="card-h"><div class="ic">RJ</div><h3>أسباب الرفض</h3></div>
       <div class="chips" style="margin:0">${tcs(c.reject_codes).map(t=>`<span class="chip down">${esc(t)}</span>`).join('')}</div>
     </div>`:''}
 
@@ -940,7 +1241,7 @@ async function load(){
 async function loadCatalog(){
   try{ CAT=(await (await fetch('/api/i18n')).json()).messages||{}; }catch(e){ CAT={}; }
 }
-setTheme(localStorage.getItem('theme')||'light');
+setTheme(localStorage.getItem('theme')||'dark');
 loadCatalog().then(checkSession).then(ok=>{ if(ok) load(); });
 setInterval(load,30000);
 </script>
