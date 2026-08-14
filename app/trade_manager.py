@@ -20,9 +20,12 @@ def state():
 
 async def _close(symbol, reason, meta=None):
     global LAST_ACTION
+    position={}
+    try: position=await alpaca.position(symbol)
+    except Exception: position={}
     result=await alpaca.close_position(symbol)
     LAST_ACTION={"symbol":symbol,"action":"CLOSE","reason":reason,"ts":datetime.now(timezone.utc).isoformat()}
-    payload={"reason":reason,"result":result}
+    payload={"reason":reason,"result":result,"position":position}
     if meta: payload.update(meta)
     log_event("auto_exit",symbol,json.dumps(payload))
     TRACKED.pop(symbol,None)
@@ -41,18 +44,17 @@ async def manage_once():
     positions=await alpaca.positions()
     if risk.get("blocked") and positions and settings.close_on_daily_guard:
         result=await alpaca.close_all_positions()
-        log_event("risk_guard_flatten",None,json.dumps({"risk":risk,"result":result}))
+        log_event("risk_guard_flatten",None,json.dumps({"risk":risk,"positions":positions,"result":result}))
         TRACKED.clear(); return
     if not positions: TRACKED.clear(); return
 
-    # Bracket legs are day orders: whatever survives to the bell loses its stop
-    # and carries into the next session's opening gap unprotected.
     minutes_left=minutes_until(clock.get("next_close"))
     if settings.eod_flatten_enabled and minutes_left is not None and 0<minutes_left<=settings.eod_flatten_minutes:
         result=await alpaca.close_all_positions()
         log_event("eod_flatten",None,json.dumps({
             "minutes_to_close":round(minutes_left,1),
             "symbols":[(p.get("symbol") or "").upper() for p in positions],
+            "positions":positions,
             "result":result,
         }))
         TRACKED.clear(); return
@@ -72,9 +74,6 @@ async def manage_once():
         if rec is None:
             rec=PositionState(symbol=symbol,entry=entry,first_seen=now,high=current)
             TRACKED[symbol]=rec
-        # Anchor R to the real entry stop. Only set once: as a stop trails up the
-        # risk it represents shrinks, but R must stay measured against the risk
-        # actually taken at entry.
         if rec.initial_risk_per_share is None:
             stop=stops.get(symbol,0.0)
             if 0<stop<rec.entry: rec.initial_risk_per_share=rec.entry-stop
