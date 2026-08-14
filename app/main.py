@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import math
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -19,7 +20,7 @@ from .intelligence import enrich_candidate, market_brief
 from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
 from .portfolio import dashboard_portfolio
 
-app = FastAPI(title="Basel Trader Mobile", version="1.0.0")
+app = FastAPI(title="Basel Trader Mobile", version="1.1.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 protected = [Depends(auth.require_auth)]
@@ -82,6 +83,41 @@ async def pro_dashboard():
                 "paper_execution":alpaca.configured(),"autonomous_entry":True,"autonomous_exit":True}}
     except Exception as e: raise HTTPException(502,f"Pro dashboard error: {e}")
 
+@app.get("/api/stock/{symbol}", dependencies=protected)
+async def stock_detail(symbol: str):
+    symbol=symbol.upper().strip()
+    if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
+    is_sim=not alpaca.configured()
+    try:
+        if is_sim:
+            rows=[enrich_candidate(r) for r in simulation.scan()]
+            row=next((r for r in rows if r.get("symbol","").upper()==symbol),None)
+            if row is None: raise HTTPException(404,"السهم غير موجود في المحاكاة")
+            base=float(row.get("price") or 1)
+            bars=[]
+            for i in range(78):
+                wave=math.sin(i/7)*0.012 + math.sin(i/17)*0.008
+                trend=(i-45)*0.0007
+                close=base*(1+wave+trend)
+                open_=close*(1-0.003*math.sin(i))
+                high=max(open_,close)*1.004
+                low=min(open_,close)*0.996
+                bars.append({"t":i,"o":round(open_,4),"h":round(high,4),"l":round(low,4),"c":round(close,4),"v":int(25000+15000*abs(math.sin(i/5)))})
+            return {"simulation":True,"symbol":symbol,"candidate":row,"bars":bars,"news":[],"position":None}
+
+        rows=await scan()
+        enriched=[enrich_candidate(r) for r in rows]
+        row=next((r for r in enriched if r.get("symbol","").upper()==symbol),None)
+        bars_map=await alpaca.intraday_bars([symbol],minutes=390)
+        news_map=await alpaca.news([symbol],hours=48,limit=20)
+        position=None
+        try: position=await alpaca.position(symbol)
+        except Exception: pass
+        return {"simulation":False,"symbol":symbol,"candidate":row,"bars":bars_map.get(symbol,[]),
+                "news":news_map.get(symbol,[])[:10],"position":position}
+    except HTTPException: raise
+    except Exception as e: raise HTTPException(502,f"تعذر تحميل بيانات السهم: {e}")
+
 @app.get("/api/portfolio", dependencies=protected)
 async def portfolio(): return await dashboard_portfolio(simulation=not alpaca.configured())
 
@@ -95,9 +131,9 @@ def session_state(basel_session: str|None=Cookie(default=None)):
 @app.post("/api/login")
 def login(req:LoginRequest,request:Request,response:Response):
     remaining=auth.throttle_state(request)
-    if remaining>0: raise HTTPException(429,f"Too many attempts. Try again in {int(remaining)}s.")
+    if remaining>0: raise HTTPException(429,f"محاولات كثيرة. حاول بعد {int(remaining)} ثانية")
     if not auth.token_matches(req.token):
-        auth.register_failure(request); raise HTTPException(401,"Invalid token.")
+        auth.register_failure(request); raise HTTPException(401,"رمز الدخول غير صحيح")
     auth.clear_failures(request); auth.set_session_cookie(response,request,auth.create_session())
     log_event("login",None,json.dumps({"ok":True})); return {"authenticated":True}
 
@@ -119,22 +155,22 @@ async def api_scan():
         if not alpaca.configured():
             rows=simulation.scan(); log_event("simulation_scan",None,json.dumps({"count":len(rows)})); return {"candidates":rows,"simulation":True}
         rows=await scan(); log_event("scan",None,json.dumps({"count":len(rows)})); return {"candidates":rows,"simulation":False}
-    except Exception as e: raise HTTPException(502,f"Market data error: {e}")
+    except Exception as e: raise HTTPException(502,f"خطأ في بيانات السوق: {e}")
 
 @app.get("/api/trades",dependencies=protected)
 def trades(): return {"events":recent_events()}
 
 @app.post("/api/optionalpha/test",dependencies=protected)
 async def optionalpha_test():
-    if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON.")
+    if KILL_SWITCH: raise HTTPException(423,"مفتاح الإيقاف مفعّل")
     try:
         result=await trigger_webhook(); log_event("optionalpha_webhook",None,json.dumps(result)); return result
-    except Exception as e: raise HTTPException(502,f"Option Alpha webhook error: {e}")
+    except Exception as e: raise HTTPException(502,f"خطأ Option Alpha: {e}")
 
 @app.post("/api/auto",dependencies=protected)
 def auto(enabled:bool):
-    if enabled and (not settings.paper or not alpaca.configured()): raise HTTPException(403,"Auto mode requires a configured Alpaca PAPER account.")
-    if enabled and KILL_SWITCH: raise HTTPException(423,"Kill switch is ON.")
+    if enabled and (not settings.paper or not alpaca.configured()): raise HTTPException(403,"التداول الآلي يتطلب حساب Alpaca Paper مربوط")
+    if enabled and KILL_SWITCH: raise HTTPException(423,"مفتاح الإيقاف مفعّل")
     return {"auto_enabled":engine.set_auto(enabled)}
 
 @app.post("/api/kill-switch",dependencies=protected)
@@ -151,17 +187,17 @@ async def kill_switch(enabled:bool=True):
 
 @app.post("/api/paper/order",dependencies=protected)
 async def paper_order(req:OrderRequest):
-    if not alpaca.configured(): raise HTTPException(403,"Simulation mode only. Connect Alpaca PAPER before sending broker orders.")
-    if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON.")
-    if not settings.paper: raise HTTPException(403,"Live trading is disabled.")
-    if not settings.enable_orders: raise HTTPException(403,"Paper orders are disabled.")
+    if not alpaca.configured(): raise HTTPException(403,"وضع محاكاة فقط. اربط Alpaca Paper لإرسال الأوامر")
+    if KILL_SWITCH: raise HTTPException(423,"مفتاح الإيقاف مفعّل")
+    if not settings.paper: raise HTTPException(403,"التداول الحقيقي معطل")
+    if not settings.enable_orders: raise HTTPException(403,"أوامر Paper معطلة")
     risk=await alpaca.risk_status()
-    if risk.get("blocked"): raise HTTPException(423,"Daily loss limit reached; new entries are blocked.")
-    if req.stop>=req.entry: raise HTTPException(400,"Stop must be below entry for long trades.")
-    if req.target<=req.entry: raise HTTPException(400,"Target must be above entry.")
+    if risk.get("blocked"): raise HTTPException(423,"تم بلوغ حد الخسارة اليومية")
+    if req.stop>=req.entry: raise HTTPException(400,"وقف الخسارة يجب أن يكون تحت الدخول")
+    if req.target<=req.entry: raise HTTPException(400,"الهدف يجب أن يكون فوق الدخول")
     account=await alpaca.account(); positions=await alpaca.positions()
-    if len(positions)>=settings.max_open_positions: raise HTTPException(409,"Maximum open positions reached.")
+    if len(positions)>=settings.max_open_positions: raise HTTPException(409,"تم بلوغ الحد الأقصى للصفقات المفتوحة")
     equity=float(account.get("equity",settings.paper_equity)); qty=position_size(equity,req.entry,req.stop)
-    if qty<1: raise HTTPException(400,"Calculated position size is zero.")
+    if qty<1: raise HTTPException(400,"حجم الصفقة المحسوب صفر")
     payload=build_bracket_order(req.symbol,qty,req.entry,req.stop,req.target,source="manual")
     result=await alpaca.submit_order(payload); log_event("paper_order",req.symbol.upper(),json.dumps(result)); return {"qty":qty,"order":result}
