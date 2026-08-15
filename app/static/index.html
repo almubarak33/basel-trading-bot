@@ -519,6 +519,7 @@ body{
           </div>
           <div class="sub" id="engineHint" style="margin-top:9px" hidden></div>
           <div class="sub" id="extWarn" style="margin-top:9px;color:var(--warn)" hidden></div>
+          <div class="sub num" id="lockWarn" style="margin-top:9px;color:var(--warn)" hidden></div>
           <div class="engine-controls">
             <button class="btn primary" onclick="setAuto(true)">تشغيل آلي</button>
             <button class="btn ghost" onclick="setAuto(false)">إيقاف مؤقت</button>
@@ -1122,6 +1123,8 @@ function render(d){
   /* لماذا لا يتداول: البوابات كانت تخرج بصمت، فيبدو الانتظار والعطل سواء */
   const eng=st.engine||{}, why=eng.idle_reason||'starting';
   const good=new Set(['working','awaiting_confirmation','extended_hours_watch']);
+  /* قواطع الدائرة: أقفال سارية الآن، بنطاقها وسببها */
+  const locks=(eng.protection_locks||[]);
   const wait=new Set(['market_closed','opening_delay','entry_window_closed','no_arm_candidates','starting']);
   $('engineState').textContent=tcode('idle_'+why)||why;
   const engineClass=good.has(why)?'ok':wait.has(why)?'warn':'hot';
@@ -1137,6 +1140,7 @@ function render(d){
     market_closed:'التنفيذ يعمل 09:30–20:00 نيويورك. ما قبل الافتتاح مُطفأ عمداً.',
     no_arm_candidates:`تم فحص ${diag.discovered??eng.last_scan_count??0} سهماً، لكن لا يوجد مرشح بلغ ${profile.min_intel_score??st.min_score??72} مع التأكيد الثاني. راجع أسباب الاستبعاد في الرادار.`,
     extended_hours_watch:'الرادار يرصد خارج نافذة التنفيذ. التنفيذ الآلي يعمل في الجلسة الرسمية وبعد الإغلاق حتى 20:00 نيويورك.',
+    protection_lock:locks.map(l=>tcode(l.code)||l.code).join(' · ')||'قاطع حماية أوقف الدخول مؤقتاً.',
     error:eng.last_error||''};
   const hint=hints[why];
   $('engineHint').textContent=hint||''; $('engineHint').hidden=!hint;
@@ -1144,6 +1148,11 @@ function render(d){
   const extended=st.trading_now&&!st.market_open;
   $('extWarn').textContent=extended?'⚠ جلسة ممتدة: الوقف يطبّقه البوت برمجياً لا الوسيط. إن توقف البوت يبقى المركز بلا حماية.':'';
   $('extWarn').hidden=!extended;
+  /* الأقفال المفروضة على رموز بعينها لا تظهر في حالة المحرك، فتُعرض هنا */
+  const benched=locks.filter(l=>l.scope!=='*');
+  $('lockWarn').textContent=benched.length
+    ?'⏸ موقوف مؤقتاً: '+benched.map(l=>l.scope).join('، '):'';
+  $('lockWarn').hidden=!benched.length;
 
   /* إدارة المحرك */
   const autoOn=!!eng.auto_enabled;

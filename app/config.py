@@ -80,6 +80,21 @@ class Settings:
     max_market_data_age_seconds: int = int(os.getenv("MAX_MARKET_DATA_AGE_SECONDS", "90"))
     max_intraday_bar_age_seconds: int = int(os.getenv("MAX_INTRADAY_BAR_AGE_SECONDS", "180"))
 
+    # Circuit breakers. The daily equity limit never fired across 44 backtested
+    # sessions while a losing exit bucket bled $3,514 in instalments, so these
+    # judge the recent record instead of the day's equity.
+    protections_enabled: bool = as_bool("PROTECTIONS_ENABLED", True)
+    guard_loss_trades: int = int(os.getenv("GUARD_LOSS_TRADES", "4"))
+    guard_loss_lookback_minutes: int = int(os.getenv("GUARD_LOSS_LOOKBACK_MINUTES", "120"))
+    guard_loss_lock_minutes: int = int(os.getenv("GUARD_LOSS_LOCK_MINUTES", "90"))
+    guard_drawdown_pct: float = float(os.getenv("GUARD_DRAWDOWN_PCT", "0.02"))
+    guard_drawdown_lookback_minutes: int = int(os.getenv("GUARD_DRAWDOWN_LOOKBACK_MINUTES", "390"))
+    guard_drawdown_min_trades: int = int(os.getenv("GUARD_DRAWDOWN_MIN_TRADES", "5"))
+    guard_drawdown_lock_minutes: int = int(os.getenv("GUARD_DRAWDOWN_LOCK_MINUTES", "180"))
+    guard_symbol_trades: int = int(os.getenv("GUARD_SYMBOL_TRADES", "3"))
+    guard_symbol_lookback_minutes: int = int(os.getenv("GUARD_SYMBOL_LOOKBACK_MINUTES", "1440"))
+    guard_symbol_lock_minutes: int = int(os.getenv("GUARD_SYMBOL_LOCK_MINUTES", "240"))
+
     # Quality filters
     min_rvol: float = float(os.getenv("MIN_RVOL", "1.2"))
     opening_delay_minutes: int = int(os.getenv("OPENING_DELAY_MINUTES", "2"))

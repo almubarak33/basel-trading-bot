@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from ..arming import ArmingTracker
+from ..protections import ClosedTrade as GuardTrade, ProtectionTracker
 from ..exits import evaluate_exit
 from ..indicators import compute_regime
 from ..intelligence import enrich_candidate
@@ -129,6 +130,8 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
     broker = SimulatedBroker(cfg.starting_equity, cfg.execution)
     equity_curve=[]; daily_equity=[]; cooldowns={}; arming=ArmingTracker()
     orders_placed=0; guard_days=0; sessions=0; rejected_reasons={}
+    # نفس قواطع الدائرة التي يشغّلها البوت الحي، حتى يكون أثرها مقاساً
+    protections=ProtectionTracker(); guard_ledger: list[GuardTrade] = []; blocked_entries=0
     days = [d for d in store.sessions() if cfg.start <= d <= cfg.end]
 
     with override_settings(cfg_settings):
@@ -151,6 +154,11 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
                     if decision:
                         broker.close(symbol,current,moment,decision.reason,decision.meta); marks.pop(symbol,None)
                 equity=broker.equity(marks); equity_curve.append(EquityPoint(moment,equity))
+                if len(broker.trades)>len(guard_ledger):
+                    for trade in broker.trades[len(guard_ledger):]:
+                        guard_ledger.append(GuardTrade(symbol=trade.symbol,closed_at=trade.exit_time,
+                            pnl=trade.pnl,r_multiple=trade.r_multiple,reason=trade.reason))
+                protections.update(guard_ledger,moment,equity,cfg_settings)
                 daily_return=(equity/day_start_equity-1)*100 if day_start_equity>0 else 0.0
                 if not guard_tripped and daily_return <= -(cfg_settings.max_daily_loss*100):
                     guard_tripped=True; guard_days+=1; arming.clear()
@@ -171,6 +179,9 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
                 if minutes_left <= cfg_settings.no_entry_minutes_before_close:
                     arming.clear(); continue
 
+                halt=protections.blocked(None,moment)
+                if halt:
+                    blocked_entries+=1; arming.clear(); continue
                 symbols,change_map,active_rank,_=ctx.universe.select(moment,cfg.legacy_screener_change)
                 symbols=_prefilter(symbols,change_map,ctx,moment,cfg_settings)
                 if not symbols:
@@ -191,6 +202,8 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
                 for candidate in eligible[:MAX_CANDIDATES_PER_SCAN]:
                     symbol=candidate["symbol"].upper()
                     if _cooldown_active(cooldowns,symbol,moment): continue
+                    if protections.blocked(symbol,moment):
+                        blocked_entries+=1; continue
                     if arming.arm_or_confirm(candidate):
                         if _submit(broker,candidate,equity,moment,cfg,cfg_settings,cooldowns): orders_placed+=1
                         break
@@ -209,7 +222,8 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
         starting_equity=cfg.starting_equity,sessions=sessions,orders_placed=orders_placed,
         orders_cancelled=broker.cancelled,guard_days=guard_days,config=cfg,
         benchmarks=_benchmark_stats(store,cfg),
-        diagnostics={"reject_reasons":dict(sorted(rejected_reasons.items(),key=lambda kv:kv[1],reverse=True))})
+        diagnostics={"reject_reasons":dict(sorted(rejected_reasons.items(),key=lambda kv:kv[1],reverse=True)),
+            "protection_blocked_entries":blocked_entries})
 
 
 def _cooldown_active(cooldowns: dict[str, datetime], symbol: str, moment: datetime) -> bool:

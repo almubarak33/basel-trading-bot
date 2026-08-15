@@ -75,6 +75,36 @@ a price below EMA9, a falling latest bar, and two consecutive checks. Hard
 stops, thesis failure, the daily risk guard, and end-of-day flattening remain
 independent protections.
 
+## Circuit breakers
+
+The only global guard used to be `MAX_DAILY_LOSS`, which compares equity against
+the previous close. Across 44 backtested sessions it fired **zero times**, while
+the `market_regime_risk_off` bucket alone lost $3,514 over 195 trades at −0.47 R
+each — instalments too small to move a daily percentage.
+
+`protections.py` adds three guards that read the trade record instead, taken in
+spirit (not in code) from Freqtrade's `plugins/protections`:
+
+| Guard | Trips when | Scope |
+|---|---|---|
+| `guard_losing_streak` | `GUARD_LOSS_TRADES` losing exits inside `GUARD_LOSS_LOOKBACK_MINUTES` | all trading |
+| `guard_drawdown` | realised drawdown from the window's peak exceeds `GUARD_DRAWDOWN_PCT` of equity | all trading |
+| `guard_weak_symbol` | one symbol is net-negative over `GUARD_SYMBOL_TRADES` recent trades | that symbol |
+
+Two deliberate departures from the original. Freqtrade's StoplossGuard counts
+only stop-type exits; here every losing exit counts, because the losses that
+motivated this were regime and thesis exits rather than stops. And a lock is
+measured from its first trigger — repeat triggers do not extend it — so a
+stand-down has a predictable end.
+
+Locks survive their triggering trades ageing out of the lookback window;
+otherwise the cooling-off period would end exactly when it is needed. The module
+is IO-free, so the live engine and the backtester run the identical rules, and
+the run summary reports how many entries the guards blocked.
+
+`PROTECTIONS_ENABLED=false` turns them off; the `no-protections` backtest preset
+does the same for a single run.
+
 ## Extended session (after the bell)
 
 `TRADE_AFTER_HOURS=true` lets the bot work 16:00–20:00 ET as well as the

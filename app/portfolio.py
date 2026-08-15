@@ -65,6 +65,11 @@ async def _closed_ledger() -> list[dict]:
     return closed
 
 
+async def closed_trades() -> list[dict]:
+    """Recent round trips, for anything that needs the trading record itself."""
+    return await _closed_ledger()
+
+
 async def dashboard_portfolio(simulation:bool=False) -> dict:
     if simulation: return _simulation_payload()
     account=await alpaca.account(); positions=await alpaca.positions()

@@ -7,7 +7,9 @@ from .arming import ArmingTracker
 from .config import settings
 from .db import log_event
 from .orders import build_extended_hours_entry, build_runner_order, build_signal_order_id
+from .portfolio import closed_trades
 from .pretrade import evaluate_pretrade
+from .protections import ProtectionTracker, from_ledger
 from .scanner import scan
 from .session import (NY, extended_scan_active, minutes_until_day_end,
                       opening_delay_active, tradeable_now)
@@ -26,6 +28,8 @@ LAST_REJECT_COUNTS: dict[str,int] = {}
 LAST_SCAN_SESSION = None
 LAST_PREFLIGHT = None
 ARMED = ArmingTracker(lambda kind, symbol, payload: log_event(kind, symbol, json.dumps(payload)))
+# قواطع الدائرة: الحد اليومي وحده لم يُطلق ولا مرة خلال 44 جلسة اختبار
+PROTECTIONS = ProtectionTracker()
 COOLDOWNS: dict[str, datetime] = {}
 # لماذا لم يدخل المحرك صفقة في آخر دورة. كل بوابة كانت تخرج بصمت، فيبدو
 # التوقف والعطل متطابقين من الخارج.
@@ -43,6 +47,7 @@ def state():
         "last_scan_count":LAST_SCAN_COUNT,"last_actionable_count":LAST_ACTIONABLE_COUNT,
         "last_reject_counts":LAST_REJECT_COUNTS,"last_scan_session":LAST_SCAN_SESSION,
         "last_preflight":LAST_PREFLIGHT,
+        "protection_locks":PROTECTIONS.snapshot(datetime.now(timezone.utc)),
         "interval_seconds":settings.scan_interval_seconds,"armed_symbols":ARMED.symbols(),
         "cooldown_symbols":list(COOLDOWNS.keys()),
         "risk_limits":{"max_gross_exposure_pct":settings.max_gross_exposure_pct*100,
@@ -118,6 +123,8 @@ async def auto_loop():
                         log_event("opening_delay",None,json.dumps({"minutes":settings.opening_delay_minutes}))
                     elif _entry_window_closed(clock):
                         IDLE_REASON="entry_window_closed"; ARMED.clear()
+                    elif await _protection_halt():
+                        IDLE_REASON="protection_lock"; ARMED.clear()
                     else:
                         rows,eligible=await _refresh_candidates("REGULAR" if market_open else "EXTENDED")
                         ARMED.retain_only({r["symbol"].upper() for r in eligible},"intel_or_setup_failed_recheck")
@@ -136,6 +143,24 @@ async def auto_loop():
             log_event("auto_error",None,json.dumps({"error":LAST_ERROR}))
         await asyncio.sleep(settings.scan_interval_seconds)
 
+async def _protection_halt():
+    """Refresh the circuit breakers from the trade record; True if trading is halted.
+
+    A failure here must not stop the engine — the guards are a safety net, and a
+    net that crashes the bot when it tears is worse than no net.
+    """
+    try:
+        equity=float((LAST_RISK_STATUS or {}).get("equity") or settings.paper_equity)
+        PROTECTIONS.update(from_ledger(await closed_trades()),datetime.now(timezone.utc),equity,settings)
+    except Exception as e:
+        log_event("protection_error",None,json.dumps({"error":str(e)})); return None
+    halt=PROTECTIONS.blocked(None,datetime.now(timezone.utc))
+    if halt:
+        log_event("protection_halt",None,json.dumps({"code":halt.code,"until":halt.until.isoformat(),
+                  "detail":halt.detail}))
+    return halt
+
+
 async def maybe_place_paper_order(candidate: dict):
     global LAST_PREFLIGHT
     if not settings.paper or not settings.enable_orders:return
@@ -152,6 +177,10 @@ async def maybe_place_paper_order(candidate: dict):
     if risk_status.get("blocked"):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"daily_loss_limit","risk":risk_status})); return
     symbol=candidate["symbol"].upper()
+    lock=PROTECTIONS.blocked(symbol,datetime.now(timezone.utc))
+    if lock:
+        log_event("order_blocked",symbol,json.dumps({"reason":lock.code,"scope":lock.scope,
+                  "until":lock.until.isoformat(),"detail":lock.detail})); return
     if _cooldown_active(symbol):return
     entry=float(candidate.get("entry") or 0); stop=float(candidate.get("stop") or 0)
     if not(entry>stop>0):

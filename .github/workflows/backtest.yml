@@ -27,6 +27,7 @@ on:
           - baseline
           - no-regime-exit
           - regime-entry-block
+          - no-protections
       overrides:
         description: "Extra overrides, e.g. --set min_score=80 (advanced)"
         required: false
@@ -88,6 +89,8 @@ jobs:
             # Restores the pre-AGGRESSIVE behaviour of refusing to enter at all
             # while the broad market is risk-off, instead of only tagging it.
             regime-entry-block) OVERRIDES="$OVERRIDES --set trading_profile=STANDARD" ;;
+            # Baseline already runs the circuit breakers; this measures them off.
+            no-protections) OVERRIDES="$OVERRIDES --set protections_enabled=false" ;;
             *) echo "::error::Unknown preset '${{ inputs.preset }}'"; exit 1 ;;
           esac
           OVERRIDES="$(echo "$OVERRIDES" | xargs || true)"

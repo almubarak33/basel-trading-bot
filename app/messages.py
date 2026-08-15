@@ -157,6 +157,13 @@ MESSAGES: dict[str, dict[str, str]] = {
     "module_autonomous_exit": {"en": "autonomous exit", "ar": "خروج تلقائي"},
     # ---- لماذا لا يتداول المحرك ----------------------------------------
     "idle_starting": {"en": "Starting up", "ar": "جاري الإقلاع"},
+    "idle_protection_lock": {"en": "Circuit breaker tripped", "ar": "قاطع الحماية مفعّل"},
+    "guard_losing_streak": {"en": "Losing streak — trading paused",
+                            "ar": "سلسلة خسائر — التداول موقوف مؤقتاً"},
+    "guard_drawdown": {"en": "Rolling drawdown limit reached",
+                       "ar": "بلوغ حد التراجع المتحرك"},
+    "guard_weak_symbol": {"en": "Symbol benched after repeated losses",
+                          "ar": "الرمز موقوف بعد خسائر متكررة"},
     "idle_auto_disabled": {"en": "Auto trading is off", "ar": "التداول التلقائي متوقف"},
     "idle_live_blocked": {"en": "Live trading is blocked", "ar": "التداول الحقيقي محظور"},
     "idle_not_configured": {"en": "Broker keys are not configured", "ar": "مفاتيح الوسيط غير مضبوطة"},

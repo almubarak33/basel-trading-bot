@@ -95,6 +95,7 @@ def summarize(result: BacktestResult)->dict:
         "by_strategy":_bucket(trades,lambda t:t.meta.get("strategy_family") or "UNKNOWN"),
         "by_entry_hour":_bucket(trades,lambda t:f"{t.meta.get('entry_hour','?')}:00 ET"),
         "top_reject_reasons":dict(list(result.diagnostics.get("reject_reasons",{}).items())[:10]),
+        "protection_blocked_entries":result.diagnostics.get("protection_blocked_entries",0),
     }
 
 
@@ -120,6 +121,9 @@ def format_report(summary:dict,config_notes:list[str]|None=None)->str:
         lines += ["",f"  {title}"]
         for name,stats in rows.items():
             lines.append(f"    {name:<24} {stats['trades']:>4} trades   win {stats['win_rate_pct']:>5.1f}%   avg {stats['avg_r']:+.2f} R   PF {stats['profit_factor']:<5}   ${stats['total_pnl']:>10,.2f}")
+    blocked=summary.get("protection_blocked_entries") or 0
+    if blocked:
+        lines += ["",f"  CIRCUIT BREAKERS  blocked {blocked:,} entry attempt(s)"]
     rejects=summary.get("top_reject_reasons") or {}
     if rejects:
         lines += ["","  WHY CANDIDATES WERE REJECTED (scan-level counts)"]
