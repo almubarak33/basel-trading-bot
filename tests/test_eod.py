@@ -71,6 +71,7 @@ class FakeAlpaca:
 def manager(monkeypatch):
     trade_manager.TRACKED.clear()
     soft_stops.clear()
+    trade_manager.UNPROTECTED_CHECKS.clear()
     monkeypatch.setattr(trade_manager, "settings", dataclasses.replace(
         trade_manager.settings, paper=True, enable_orders=True, auto_manage_positions=True,
         eod_flatten_enabled=True, eod_flatten_minutes=10, trade_after_hours=False))

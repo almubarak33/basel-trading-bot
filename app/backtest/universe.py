@@ -68,8 +68,8 @@ def build_snapshot(day_slice: DaySlice, index: int, execution: ExecutionModel) -
                      (execution.tick_size * execution.spread_ticks) / price * 100) if price > 0 else 999.0
     half = price * (spread_pct / 100) / 2
     return {
-        "latestTrade": {"p": price},
-        "latestQuote": {"bp": round(price - half, 4), "ap": round(price + half, 4)},
+        "latestTrade": {"p": price, "t": bar.get("t")},
+        "latestQuote": {"bp": round(price - half, 4), "ap": round(price + half, 4), "t": bar.get("t")},
         "minuteBar": bar,
         "dailyBar": {"c": price},
     }

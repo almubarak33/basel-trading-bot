@@ -63,6 +63,12 @@ class FakeAlpaca:
         return {s: [{"o": 10, "h": 10.1, "l": 9.9, "c": 10, "v": 5000} for _ in range(40)] for s in symbols}
     async def daily_bars(self, symbols, days=20):
         return {s: [{"c": 10, "v": 1_000_000} for _ in range(20)] for s in symbols}
+    async def latest_quotes(self, symbols):
+        return {s: self.snaps.get(s, {}).get("latestQuote", {}) for s in symbols}
+    async def latest_trades(self, symbols):
+        return {s: self.snaps.get(s, {}).get("latestTrade", {}) for s in symbols}
+    async def news(self, symbols, hours=24, limit=50):
+        return {s: [] for s in symbols}
 
 
 @pytest.fixture

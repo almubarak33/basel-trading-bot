@@ -1,10 +1,12 @@
 from __future__ import annotations
+import asyncio
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from statistics import mean
 from .alpaca import alpaca
 from .catalyst import analyze_catalyst
 from .config import settings
+from .data_quality import assess_market_data
 from .indicators import num
 from .messages import render
 from .microstructure import analyze_microstructure
@@ -17,7 +19,8 @@ def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_m
                         snapshots: dict[str, dict], bars_map: dict[str, list[dict]],
                         daily_map: dict[str, list[dict]], regime: dict, fraction: float,
                         micro_map: dict[str, dict] | None = None,
-                        catalyst_map: dict[str, dict] | None = None) -> list[dict]:
+                        catalyst_map: dict[str, dict] | None = None,
+                        observed_at: datetime | None = None) -> list[dict]:
     """Turn raw market data into ranked candidate rows.
 
     Microstructure and catalyst inputs are observational only. Historical replays
@@ -39,6 +42,12 @@ def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_m
         row["market_regime"] = regime
         row["session_fraction"] = round(fraction, 3)
         row["avg_daily_volume_20d"] = round(avg_daily, 0)
+        row["latest_bar_volume"] = round(float((bars_map.get(s) or [{}])[-1].get("v") or 0), 0)
+        row["data_quality"] = assess_market_data(
+            snapshots.get(s, {}), bars_map.get(s, []), observed_at=observed_at,
+            max_quote_age_seconds=settings.max_market_data_age_seconds,
+            max_bar_age_seconds=settings.max_intraday_bar_age_seconds,
+        )
         row["microstructure"] = micro_map.get(s, {
             "state": "UNAVAILABLE", "quality_score": None, "execution_gate": False,
             "note": "No live quote/trade snapshot attached to this candidate."
@@ -77,9 +86,13 @@ def change_pct_from_snapshot(snapshot: dict) -> float:
 
 
 async def scan():
-    regime = await alpaca.market_regime()
-    movers = await alpaca.movers(settings.movers_top)
-    actives = await alpaca.most_actives(settings.actives_top)
+    # Independent requests are concurrent to keep a 100-symbol scan inside the
+    # decision window without changing the point-in-time inputs.
+    regime, movers, actives = await asyncio.gather(
+        alpaca.market_regime(),
+        alpaca.movers(settings.movers_top),
+        alpaca.most_actives(settings.actives_top),
+    )
     gainers = movers.get("gainers", [])
     active_rows = actives.get("most_actives", actives.get("mostActives", []))
     active_rank = {row.get("symbol"): i for i, row in enumerate(active_rows, 1) if row.get("symbol")}
@@ -96,16 +109,23 @@ async def scan():
             symbols.append(s); active_only.append(s)
     symbols=symbols[:max(1,settings.screener_universe_limit)]
 
-    snapshots=await alpaca.snapshots(symbols)
+    snapshots, bars_map, daily_map = await asyncio.gather(
+        alpaca.snapshots(symbols),
+        alpaca.intraday_bars(symbols,minutes=300),
+        alpaca.daily_bars(symbols,days=20),
+    )
     snapmap=snapshots.get("snapshots",snapshots)
     for s in active_only: change_map[s]=change_pct_from_snapshot(snapmap.get(s))
-    bars_map=await alpaca.intraday_bars(symbols,minutes=300)
-    daily_map=await alpaca.daily_bars(symbols,days=20)
 
     micro_map={}
+    quotes_result, trades_result, news_result = await asyncio.gather(
+        alpaca.latest_quotes(symbols), alpaca.latest_trades(symbols),
+        alpaca.news(symbols,hours=24,limit=50), return_exceptions=True,
+    )
     try:
-        quotes=await alpaca.latest_quotes(symbols)
-        trades=await alpaca.latest_trades(symbols)
+        if isinstance(quotes_result, Exception): raise quotes_result
+        if isinstance(trades_result, Exception): raise trades_result
+        quotes, trades = quotes_result, trades_result
         for s in symbols:
             snap=snapmap.get(s,{})
             price=(num((snap.get("latestTrade") or {}).get("p"))
@@ -119,7 +139,8 @@ async def scan():
 
     catalyst_map={}
     try:
-        news_map=await alpaca.news(symbols,hours=24,limit=50)
+        if isinstance(news_result, Exception): raise news_result
+        news_map=news_result
         for s in symbols:
             catalyst_map[s]=analyze_catalyst(news_map.get(s,[]))
     except Exception as exc:
@@ -128,5 +149,7 @@ async def scan():
                              "headline":None,"execution_gate":False,
                              "note":f"Catalyst unavailable: {type(exc).__name__}"}
 
+    observed_at=datetime.now(timezone.utc)
     return assemble_candidates(symbols, change_map, active_rank, snapmap, bars_map, daily_map,
-                               regime, session_fraction(datetime.now(NY)), micro_map, catalyst_map)
+                               regime, session_fraction(datetime.now(NY)), micro_map, catalyst_map,
+                               observed_at=observed_at)

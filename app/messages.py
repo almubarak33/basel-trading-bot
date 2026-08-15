@@ -38,6 +38,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     "no_volume_confirm": {"en": "Reclaim volume not confirmed", "ar": "حجم الاستعادة غير مؤكد"},
     "stop_too_wide": {"en": "Required stop is too wide", "ar": "وقف الخسارة المطلوب واسع جداً"},
     "regime_block": {"en": "Market regime block: SPY/QQQ not supportive", "ar": "حظر حالة السوق: SPY/QQQ غير داعمين"},
+    "data_quality_block": {"en": "Market data failed the execution-integrity gate", "ar": "بيانات السوق لم تجتز بوابة سلامة التنفيذ"},
 
     # ---- bull case (intelligence) --------------------------------------
     "above_vwap": {"en": "Price above VWAP", "ar": "السعر فوق VWAP"},
@@ -59,6 +60,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     },
     "no_clean_pullback": {"en": "No clean pullback yet", "ar": "لا يوجد تصحيح واضح بعد"},
     "reclaim_missing": {"en": "Reclaim not confirmed", "ar": "الاستعادة غير مؤكدة"},
+    "degraded_market_data": {"en": "Market data is stale or internally inconsistent", "ar": "بيانات السوق قديمة أو غير متسقة"},
 
     # ---- decision thesis ------------------------------------------------
     "thesis_arm": {

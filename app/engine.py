@@ -6,7 +6,8 @@ from .alpaca import alpaca
 from .arming import ArmingTracker
 from .config import settings
 from .db import log_event
-from .orders import build_extended_hours_entry, build_runner_order
+from .orders import build_extended_hours_entry, build_runner_order, build_signal_order_id
+from .pretrade import evaluate_pretrade
 from .scanner import scan
 from .session import (NY, extended_scan_active, minutes_until_day_end,
                       opening_delay_active, tradeable_now)
@@ -23,6 +24,7 @@ LAST_SCAN_COUNT = 0
 LAST_ACTIONABLE_COUNT = 0
 LAST_REJECT_COUNTS: dict[str,int] = {}
 LAST_SCAN_SESSION = None
+LAST_PREFLIGHT = None
 ARMED = ArmingTracker(lambda kind, symbol, payload: log_event(kind, symbol, json.dumps(payload)))
 COOLDOWNS: dict[str, datetime] = {}
 # لماذا لم يدخل المحرك صفقة في آخر دورة. كل بوابة كانت تخرج بصمت، فيبدو
@@ -40,9 +42,13 @@ def state():
         "last_candidate":LAST_CANDIDATE,"last_risk_status":LAST_RISK_STATUS,
         "last_scan_count":LAST_SCAN_COUNT,"last_actionable_count":LAST_ACTIONABLE_COUNT,
         "last_reject_counts":LAST_REJECT_COUNTS,"last_scan_session":LAST_SCAN_SESSION,
+        "last_preflight":LAST_PREFLIGHT,
         "interval_seconds":settings.scan_interval_seconds,"armed_symbols":ARMED.symbols(),
         "cooldown_symbols":list(COOLDOWNS.keys()),
-        "entry_model":"AGGRESSIVE_INTELLIGENCE + BREAKOUT_OR_RECLAIM + 2_STAGE + RUNNER_EXIT"}
+        "risk_limits":{"max_gross_exposure_pct":settings.max_gross_exposure_pct*100,
+                       "max_portfolio_heat_pct":settings.max_portfolio_heat_pct*100,
+                       "max_bar_participation_pct":settings.max_bar_participation_pct*100},
+        "entry_model":"POINT_IN_TIME_DATA + 2_STAGE + PORTFOLIO_PREFLIGHT + RUNNER_EXIT"}
 
 def _opening_delay_active() -> bool:
     return opening_delay_active(datetime.now(NY), settings.opening_delay_minutes)
@@ -131,6 +137,7 @@ async def auto_loop():
         await asyncio.sleep(settings.scan_interval_seconds)
 
 async def maybe_place_paper_order(candidate: dict):
+    global LAST_PREFLIGHT
     if not settings.paper or not settings.enable_orders:return
     if candidate.get("decision",{}).get("action")!="ARM":
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"intel_decision_not_arm"})); return
@@ -146,27 +153,41 @@ async def maybe_place_paper_order(candidate: dict):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"daily_loss_limit","risk":risk_status})); return
     symbol=candidate["symbol"].upper()
     if _cooldown_active(symbol):return
-    positions=await alpaca.positions()
-    if len(positions)>=settings.max_open_positions:return
-    if any((p.get("symbol") or "").upper()==symbol for p in positions):return
     entry=float(candidate.get("entry") or 0); stop=float(candidate.get("stop") or 0)
     if not(entry>stop>0):
         log_event("order_blocked",symbol,json.dumps({"reason":"invalid_structural_levels"})); return
     risk_pct=((entry-stop)/entry)*100
     if risk_pct>settings.max_stop_pct:
         log_event("order_blocked",symbol,json.dumps({"reason":"stop_too_wide","risk_pct":risk_pct})); return
-    account=await alpaca.account(); equity=float(account.get("equity",settings.paper_equity)); qty=position_size(equity,entry,stop)
-    if qty<1:return
+    positions, open_orders, account = await asyncio.gather(
+        alpaca.positions(), alpaca.open_orders(), alpaca.account(),
+    )
+    equity=float(account.get("equity",settings.paper_equity) or settings.paper_equity)
+    buying_power=float(account.get("buying_power",equity) or equity)
+    requested_qty=position_size(equity,entry,stop)
+    preflight=evaluate_pretrade(
+        candidate,positions,open_orders,equity=equity,buying_power=buying_power,
+        requested_qty=requested_qty,config=settings,
+    )
+    LAST_PREFLIGHT=preflight.to_dict()
+    if not preflight.allowed:
+        log_event("order_blocked",symbol,json.dumps({"reason":"professional_preflight",
+                  "blockers":preflight.blockers,"metrics":preflight.metrics})); return
+    qty=preflight.approved_qty
+    observed_at=datetime.now(timezone.utc)
+    order_id=build_signal_order_id(symbol,str(candidate.get("setup") or "setup"),observed_at)
     # خارج الجلسة الرسمية لا يقبل الوسيط أمراً مرفقاً بوقف، فالدخول أمر limit
     # بسيط والوقف يُسجَّل ليطبّقه مدير الصفقات برمجياً.
     extended=not bool(clock.get("is_open",False))
-    payload=(build_extended_hours_entry(symbol,qty,entry,source="intel") if extended
-             else build_runner_order(symbol,qty,entry,stop,source="intel"))
+    payload=(build_extended_hours_entry(symbol,qty,entry,source="intel",client_order_id=order_id)
+             if extended else
+             build_runner_order(symbol,qty,entry,stop,source="intel",client_order_id=order_id))
     result=await alpaca.submit_order(payload)
     soft_stops.remember(symbol,stop)
     COOLDOWNS[symbol]=datetime.now(timezone.utc)+timedelta(minutes=settings.symbol_cooldown_minutes)
     log_event("smart_paper_order",symbol,json.dumps({"order":result,"setup":candidate.get("setup"),
         "score":candidate.get("score"),"intel_score":candidate.get("intel_score"),"grade":candidate.get("grade"),
         "rvol":candidate.get("rvol"),"entry":entry,"stop":stop,"target_reference":candidate.get("target"),
-        "runner_mode":True,"risk_pct":round(risk_pct,2),
-        "extended_hours":extended,"stop_enforced_by":"software" if extended else "broker"}))
+        "runner_mode":True,"risk_pct":round(risk_pct,2),"preflight":preflight.to_dict(),
+        "client_order_id":order_id,"extended_hours":extended,
+        "stop_enforced_by":"software" if extended else "broker"}))

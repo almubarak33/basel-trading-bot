@@ -28,6 +28,14 @@ def _sharpe(daily_returns: list[float]) -> float:
     return _safe_div(avg,sd)*math.sqrt(TRADING_DAYS_PER_YEAR) if sd else 0.0
 
 
+def _sortino(daily_returns: list[float]) -> float:
+    if len(daily_returns) < 2: return 0.0
+    downside = [min(value, 0.0) for value in daily_returns]
+    downside_deviation = math.sqrt(sum(value * value for value in downside) / len(downside))
+    average = sum(daily_returns) / len(daily_returns)
+    return _safe_div(average, downside_deviation) * math.sqrt(TRADING_DAYS_PER_YEAR) if downside_deviation else 0.0
+
+
 def _annualized(total_return_pct: float, sessions: int) -> float:
     if sessions <= 0 or total_return_pct <= -100: return 0.0
     growth = 1 + total_return_pct / 100
@@ -73,9 +81,11 @@ def summarize(result: BacktestResult)->dict:
     available=[b for b in benchmarks.values() if b.get("available")]
     best_benchmark=max((float(b.get("total_return_pct") or 0) for b in available), default=0.0)
     benchmark_pass=bool(available) and bot_return>best_benchmark
+    max_drawdown=round(_drawdown([p.equity for p in result.equity_curve]),2)
+    annualized=round(_annualized(bot_return,result.sessions),2)
     return {
         "period":{"sessions":result.sessions,"first_day":str(result.daily_equity[0][0]) if result.daily_equity else None,"last_day":str(result.daily_equity[-1][0]) if result.daily_equity else None},
-        "equity":{"starting":round(result.starting_equity,2),"ending":round(ending_equity,2),"total_return_pct":bot_return,"annualized_return_pct":round(_annualized(bot_return,result.sessions),2),"max_drawdown_pct":round(_drawdown([p.equity for p in result.equity_curve]),2),"sharpe":round(_sharpe(daily_returns),2)},
+        "equity":{"starting":round(result.starting_equity,2),"ending":round(ending_equity,2),"total_return_pct":bot_return,"annualized_return_pct":annualized,"max_drawdown_pct":max_drawdown,"sharpe":round(_sharpe(daily_returns),2),"sortino":round(_sortino(daily_returns),2),"calmar":round(_safe_div(annualized,max_drawdown),2)},
         "benchmarks":benchmarks,
         "benchmark_test":{"beats_all":benchmark_pass,"best_benchmark_return_pct":round(best_benchmark,2),"alpha_vs_best_pct":round(bot_return-best_benchmark,2)},
         "trades":{"count":len(trades),"orders_placed":result.orders_placed,"orders_never_filled":result.orders_cancelled,"fill_rate_pct":round(_safe_div(len(trades),result.orders_placed)*100,1),"trades_per_session":round(_safe_div(len(trades),result.sessions),2),"win_rate_pct":round(_safe_div(len(wins),len(trades))*100,1),"avg_r":round(_safe_div(sum(r_values),len(r_values)),3),"expectancy_r":round(_safe_div(sum(r_values),len(r_values)),3),"avg_win_r":round(_safe_div(sum(t.r_multiple for t in wins),len(wins)),3),"avg_loss_r":round(_safe_div(sum(t.r_multiple for t in losses),len(losses)),3),"best_r":round(max(r_values),3) if r_values else 0.0,"worst_r":round(min(r_values),3) if r_values else 0.0,"profit_factor":round(_safe_div(gross_win,gross_loss,float("inf") if gross_win else 0.0),2)},
@@ -90,7 +100,7 @@ def summarize(result: BacktestResult)->dict:
 
 def format_report(summary:dict,config_notes:list[str]|None=None)->str:
     equity=summary["equity"]; trades=summary["trades"]; period=summary["period"]
-    lines=["="*62,"  BACKTEST REPORT","="*62,f"  Sessions          {period['sessions']}  ({period['first_day']} → {period['last_day']})","","  EQUITY",f"    Start / End     ${equity['starting']:,.2f} → ${equity['ending']:,.2f}",f"    Total return    {equity['total_return_pct']:+.2f}%",f"    Annualized*     {equity['annualized_return_pct']:+.2f}%",f"    Max drawdown    {equity['max_drawdown_pct']:.2f}%",f"    Sharpe          {equity['sharpe']:.2f}"]
+    lines=["="*62,"  BACKTEST REPORT","="*62,f"  Sessions          {period['sessions']}  ({period['first_day']} → {period['last_day']})","","  EQUITY",f"    Start / End     ${equity['starting']:,.2f} → ${equity['ending']:,.2f}",f"    Total return    {equity['total_return_pct']:+.2f}%",f"    Annualized*     {equity['annualized_return_pct']:+.2f}%",f"    Max drawdown    {equity['max_drawdown_pct']:.2f}%",f"    Sharpe / Sortino {equity['sharpe']:.2f} / {equity['sortino']:.2f}",f"    Calmar           {equity['calmar']:.2f}"]
     benches=summary.get("benchmarks") or {}
     if benches:
         lines += ["","  BENCHMARKS — SAME TEST WINDOW"]

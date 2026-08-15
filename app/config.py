@@ -33,6 +33,14 @@ class Settings:
     max_daily_loss: float = float(os.getenv("MAX_DAILY_LOSS", "0.02"))
     max_open_positions: int = int(os.getenv("MAX_OPEN_POSITIONS", "4"))
     max_position_notional_pct: float = float(os.getenv("MAX_POSITION_NOTIONAL_PCT", "0.20"))
+    # Portfolio-level controls include both filled positions and working entries.
+    max_gross_exposure_pct: float = float(os.getenv("MAX_GROSS_EXPOSURE_PCT", "0.60"))
+    max_portfolio_heat_pct: float = float(os.getenv("MAX_PORTFOLIO_HEAT_PCT", "0.02"))
+    buying_power_buffer_pct: float = float(os.getenv("BUYING_POWER_BUFFER_PCT", "0.05"))
+    # Do not become a material part of a thin one-minute bar or daily volume.
+    max_bar_participation_pct: float = float(os.getenv("MAX_BAR_PARTICIPATION_PCT", "0.05"))
+    max_daily_participation_pct: float = float(os.getenv("MAX_DAILY_PARTICIPATION_PCT", "0.001"))
+    require_liquidity_for_orders: bool = as_bool("REQUIRE_LIQUIDITY_FOR_ORDERS", True)
 
     # Discovery is open across the price spectrum. A max of 0 means no cap.
     min_price: float = float(os.getenv("MIN_PRICE", "0.01"))
@@ -66,6 +74,12 @@ class Settings:
     reward_r_multiple: float = float(os.getenv("REWARD_R_MULTIPLE", "2.0"))
     symbol_cooldown_minutes: int = int(os.getenv("SYMBOL_COOLDOWN_MINUTES", "30"))
 
+    # Point-in-time data integrity. Degraded symbols remain visible on the radar,
+    # but the autonomous execution path will not trade them.
+    require_fresh_market_data: bool = as_bool("REQUIRE_FRESH_MARKET_DATA", True)
+    max_market_data_age_seconds: int = int(os.getenv("MAX_MARKET_DATA_AGE_SECONDS", "90"))
+    max_intraday_bar_age_seconds: int = int(os.getenv("MAX_INTRADAY_BAR_AGE_SECONDS", "180"))
+
     # Quality filters
     min_rvol: float = float(os.getenv("MIN_RVOL", "1.2"))
     opening_delay_minutes: int = int(os.getenv("OPENING_DELAY_MINUTES", "2"))
@@ -84,6 +98,8 @@ class Settings:
     protected_floor_r: float = float(os.getenv("PROTECTED_FLOOR_R", "0.15"))
     max_hold_minutes: int = int(os.getenv("MAX_HOLD_MINUTES", "90"))
     close_on_daily_guard: bool = as_bool("CLOSE_ON_DAILY_GUARD", True)
+    flatten_unprotected_positions: bool = as_bool("FLATTEN_UNPROTECTED_POSITIONS", True)
+    unprotected_position_grace_checks: int = int(os.getenv("UNPROTECTED_POSITION_GRACE_CHECKS", "3"))
 
     # End of day. Stop legs are day orders in the current PAPER implementation,
     # so anything still open near the bell is flattened intentionally.
