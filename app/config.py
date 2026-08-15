@@ -12,6 +12,10 @@ class Settings:
     api_key: str = os.getenv("ALPACA_API_KEY", "")
     api_secret: str = os.getenv("ALPACA_API_SECRET", "")
     api_token: str = os.getenv("API_TOKEN", "")
+    sec_user_agent: str = os.getenv(
+        "SEC_USER_AGENT",
+        "BaselTrader/1.0 https://github.com/almubarak33/basel-trading-bot",
+    )
     paper: bool = as_bool("ALPACA_PAPER", True)
     # PAPER execution is enabled by default. Live trading remains blocked by the
     # explicit paper check throughout the order path.

@@ -6,7 +6,9 @@ from app import auth
 from app.main import app
 
 PROTECTED_GET = ["/api/status", "/api/pro/dashboard", "/api/trade-manager",
-                 "/api/risk-status", "/api/scan", "/api/trades"]
+                 "/api/risk-status", "/api/scan", "/api/trades",
+                 "/api/stock/NOVA", "/api/stock/NOVA/chart?timeframe=5Min",
+                 "/api/stock/NOVA/details", "/api/stock/NOVA/fundamentals"]
 PROTECTED_POST = ["/api/auto?enabled=false", "/api/kill-switch?enabled=false",
                   "/api/optionalpha/test", "/api/paper/order"]
 

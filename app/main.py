@@ -1,9 +1,7 @@
 from __future__ import annotations
 import asyncio
 import json
-import math
 from collections import Counter
-from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -12,17 +10,16 @@ from pydantic import BaseModel, Field
 from . import auth
 from .alpaca import alpaca
 from .config import settings
-from .chart_data import completed_session_closes
 from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
-from .session import NY
 from . import engine, simulation, trade_manager
 from .orders import build_runner_order
 from .optionalpha import trigger_webhook
 from .intelligence import enrich_candidate, market_brief
 from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
 from .portfolio import dashboard_portfolio
+from .stock_service import stock_chart, stock_core, stock_details, stock_fundamentals
 
 app = FastAPI(title="Basel Trader Mobile", version="1.1.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
@@ -112,49 +109,37 @@ async def pro_dashboard():
 async def stock_detail(symbol: str):
     symbol=symbol.upper().strip()
     if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
-    is_sim=not alpaca.configured()
     try:
-        if is_sim:
-            rows=[enrich_candidate(r) for r in simulation.scan()]
-            row=next((r for r in rows if r.get("symbol","").upper()==symbol),None)
-            if row is None: raise HTTPException(404,"السهم غير موجود في المحاكاة")
-            base=float(row.get("price") or 1)
-            bars=[]; daily=[]
-            session_day=datetime.now(NY).replace(hour=9,minute=30,second=0,microsecond=0)
-            days=[]
-            while len(days)<5:
-                if session_day.weekday()<5: days.append(session_day)
-                session_day-=timedelta(days=1)
-            for day_index,session_start in enumerate(reversed(days)):
-                day_bars=[]
-                for i in range(78):
-                    wave=math.sin((i+day_index*5)/7)*0.012 + math.sin(i/17)*0.008
-                    trend=(i-45)*0.0007 + (day_index-4)*0.004
-                    close=base*(1+wave+trend)
-                    open_=close*(1-0.003*math.sin(i))
-                    high=max(open_,close)*1.004; low=min(open_,close)*0.996
-                    bar={"t":(session_start+timedelta(minutes=i*5)).isoformat(),
-                         "o":round(open_,4),"h":round(high,4),"l":round(low,4),"c":round(close,4),
-                         "v":int(25000+15000*abs(math.sin(i/5)))}
-                    bars.append(bar); day_bars.append(bar)
-                daily.append({"t":session_start.isoformat(),"c":day_bars[-1]["c"]})
-            return {"simulation":True,"symbol":symbol,"candidate":row,"bars":bars,
-                    "previous_closes":completed_session_closes(daily),"news":[],"position":None}
-
-        rows=await scan()
-        enriched=[enrich_candidate(r) for r in rows]
-        row=next((r for r in enriched if r.get("symbol","").upper()==symbol),None)
-        bars_map=await alpaca.intraday_bars([symbol],minutes=8*24*60)
-        daily_map=await alpaca.daily_bars([symbol],days=15)
-        news_map=await alpaca.news([symbol],hours=48,limit=20)
-        position=None
-        try: position=await alpaca.position(symbol)
-        except Exception: pass
-        return {"simulation":False,"symbol":symbol,"candidate":row,"bars":bars_map.get(symbol,[]),
-                "previous_closes":completed_session_closes(daily_map.get(symbol,[])),
-                "news":news_map.get(symbol,[])[:10],"position":position}
+        return await stock_core(symbol)
+    except LookupError: raise HTTPException(404,"لا تتوفر بيانات لهذا السهم")
     except HTTPException: raise
     except Exception as e: raise HTTPException(502,f"تعذر تحميل بيانات السهم: {e}")
+
+@app.get("/api/stock/{symbol}/chart", dependencies=protected)
+async def stock_chart_data(symbol: str, timeframe: str = "1Min"):
+    symbol=symbol.upper().strip()
+    if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
+    try: return await stock_chart(symbol,timeframe)
+    except ValueError: raise HTTPException(400,"الإطار الزمني غير مدعوم")
+    except Exception as e: raise HTTPException(502,f"تعذر تحميل الشارت: {e}")
+
+@app.get("/api/stock/{symbol}/details", dependencies=protected)
+async def stock_detail_data(symbol: str):
+    symbol=symbol.upper().strip()
+    if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
+    try:
+        payload=dict(await stock_details(symbol))
+        payload["bot_events"]=[event for event in recent_events(250)
+                               if str(event.get("symbol") or "").upper()==symbol][:15]
+        return payload
+    except Exception as e: raise HTTPException(502,f"تعذر تحميل تفاصيل السهم: {e}")
+
+@app.get("/api/stock/{symbol}/fundamentals", dependencies=protected)
+async def stock_fundamental_data(symbol: str):
+    symbol=symbol.upper().strip()
+    if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
+    try: return await stock_fundamentals(symbol)
+    except Exception as e: raise HTTPException(502,f"تعذر تحميل بيانات الشركة: {e}")
 
 @app.get("/api/portfolio", dependencies=protected)
 async def portfolio(): return await dashboard_portfolio(simulation=not alpaca.configured())
