@@ -9,7 +9,7 @@ on:
       start:
         description: "Start date (YYYY-MM-DD)"
         required: true
-        default: "2024-04-01"
+        default: "2023-12-01"
       end:
         description: "End date (YYYY-MM-DD) — must be before today"
         required: true
@@ -26,6 +26,7 @@ on:
         options:
           - baseline
           - no-regime-exit
+          - regime-entry-block
       overrides:
         description: "Extra overrides, e.g. --set min_score=80 (advanced)"
         required: false
@@ -84,6 +85,9 @@ jobs:
           case "${{ inputs.preset }}" in
             baseline)       ;;
             no-regime-exit) OVERRIDES="$OVERRIDES --set regime_exit_enabled=false" ;;
+            # Restores the pre-AGGRESSIVE behaviour of refusing to enter at all
+            # while the broad market is risk-off, instead of only tagging it.
+            regime-entry-block) OVERRIDES="$OVERRIDES --set trading_profile=STANDARD" ;;
             *) echo "::error::Unknown preset '${{ inputs.preset }}'"; exit 1 ;;
           esac
           OVERRIDES="$(echo "$OVERRIDES" | xargs || true)"
