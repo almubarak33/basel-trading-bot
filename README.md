@@ -102,6 +102,30 @@ $8,656 across 448. Those trades were entered while the market was supportive
 and exited after it turned, so the entry block cannot reach them; whether that
 exit rule helps or hurts is what the `no-regime-exit` preset measures.
 
+## Measured: the market-regime exit
+
+Removing the regime exit (`REGIME_EXIT_ENABLED=false`) over the same 125
+sessions, on top of the entry block:
+
+| | **exit on (default)** | exit off |
+|---|---|---|
+| Total return | **+14.96%** | +13.42% |
+| Profit factor | **1.28** | 1.23 |
+| Win rate | 34.3% | 41.2% |
+| Avg loss | **−0.48 R** | −0.62 R |
+| Trades | 830 | 797 |
+
+Switching it off does not save those positions — it changes how they die.
+`market_regime_risk_off` (348 trades, −$6,804) disappears, and in its place
+`stop_loss` goes from 44 trades to 152 (−$1,772 → −$6,309) and
+`thesis_invalidated` from 113 to 206 (−$1,450 → −$4,032). That is about $7,100
+of new losses replacing $6,800 of old ones, and the average loss grows from
+−0.48 R to −0.62 R.
+
+The higher win rate is misleading: the rule was cutting losers early, so
+removing it leaves more trades alive to reach a full stop. It earns its keep,
+and stays on.
+
 ## Circuit breakers
 
 The only global guard used to be `MAX_DAILY_LOSS`, which compares equity against
