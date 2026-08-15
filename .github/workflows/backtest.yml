@@ -26,7 +26,7 @@ on:
         options:
           - baseline
           - no-regime-exit
-          - regime-entry-block
+          - no-regime-entry-block
           - no-protections
       overrides:
         description: "Extra overrides, e.g. --set min_score=80 (advanced)"
@@ -89,9 +89,8 @@ jobs:
           case "${{ inputs.preset }}" in
             baseline)       ;;
             no-regime-exit) OVERRIDES="$OVERRIDES --set regime_exit_enabled=false" ;;
-            # Restores the pre-AGGRESSIVE behaviour of refusing to enter at all
-            # while the broad market is risk-off, instead of only tagging it.
-            regime-entry-block) OVERRIDES="$OVERRIDES --set trading_profile=STANDARD" ;;
+            # The entry block is the default now, so the experiment is removing it.
+            no-regime-entry-block) OVERRIDES="$OVERRIDES --set trading_profile=AGGRESSIVE" ;;
             # Baseline already runs the circuit breakers; this measures them off.
             no-protections) OVERRIDES="$OVERRIDES --set protections_enabled=false" ;;
             *) echo "::error::Unknown preset '${{ inputs.preset }}'"; exit 1 ;;

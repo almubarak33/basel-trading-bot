@@ -21,7 +21,10 @@ class Settings:
     # explicit paper check throughout the order path.
     enable_orders: bool = as_bool("ENABLE_PAPER_ORDERS", True)
     auto_paper_trading: bool = as_bool("AUTO_PAPER_TRADING", True)
-    trading_profile: str = os.getenv("TRADING_PROFILE", "AGGRESSIVE").upper()
+    # STANDARD refuses to enter while SPY/QQQ are risk-off. Measured over 125
+    # sessions it beat AGGRESSIVE on every metric — return +14.96% vs +13.05%,
+    # drawdown 3.60% vs 6.51%, Sharpe 2.79 vs 1.99, Calmar 9.01 vs 4.31.
+    trading_profile: str = os.getenv("TRADING_PROFILE", "STANDARD").upper()
     scan_interval_seconds: int = int(os.getenv("SCAN_INTERVAL_SECONDS", "30"))
     scan_extended_hours: bool = as_bool("SCAN_EXTENDED_HOURS", True)
 

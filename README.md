@@ -75,6 +75,33 @@ a price below EMA9, a falling latest bar, and two consecutive checks. Hard
 stops, thesis failure, the daily risk guard, and end-of-day flattening remain
 independent protections.
 
+## Measured: the market-regime entry block
+
+Two six-month backtests over the same 125 sessions (2023-12-01 → 2024-05-31,
+150 symbols), differing only in whether the bot may enter while SPY and QQQ are
+both risk-off:
+
+| | AGGRESSIVE (caution only) | **STANDARD (blocks entry)** |
+|---|---|---|
+| Total return | +13.05% | **+14.96%** |
+| Max drawdown | 6.51% | **3.60%** |
+| Sharpe / Sortino | 1.99 / 4.56 | **2.79 / 6.39** |
+| Calmar | 4.31 | **9.01** |
+| Expectancy | +0.068 R | **+0.089 R** |
+| Win rate | 30.1% | **34.3%** |
+| Trades | 960 | 830 |
+| Alpha vs QQQ | −3.46% | **−1.55%** |
+
+STANDARD wins on every metric, so it is the default. The gain is mostly in
+risk, not return: roughly the same money for slightly over half the drawdown.
+
+Two things this did *not* fix. The bot still loses to buying QQQ and holding,
+by 1.55 points — the alpha hurdle in the report is honest about it. And
+`market_regime_risk_off` still cost $6,804 across 348 trades, down only from
+$8,656 across 448. Those trades were entered while the market was supportive
+and exited after it turned, so the entry block cannot reach them; whether that
+exit rule helps or hurts is what the `no-regime-exit` preset measures.
+
 ## Circuit breakers
 
 The only global guard used to be `MAX_DAILY_LOSS`, which compares equity against
