@@ -8,6 +8,7 @@ from typing import Callable
 
 # Percent the price may drift above the arming price before the setup is considered chased.
 MAX_ARM_DRIFT_PCT = 1.0
+MAX_SCORE_DEGRADATION = 8.0
 REQUIRED_CONFIRMATIONS = 2
 
 
@@ -42,12 +43,30 @@ class ArmingTracker:
                 "first_score": float(candidate["score"]),
                 "intel_score": float(candidate.get("intel_score") or 0),
                 "grade": candidate.get("grade"),
+                "setup": candidate.get("setup"),
             }
             self._on_event("setup_armed", symbol, dict(self._armed[symbol]))
             return False
 
         first_price = float(current.get("first_price", candidate["price"]))
         now_price = float(candidate["price"])
+        if candidate.get("data_quality") and not candidate["data_quality"].get("execution_allowed", False):
+            self._armed.pop(symbol, None)
+            self._on_event("setup_disarmed", symbol, {"reason": "market_data_quality"})
+            return False
+        first_setup = current.get("setup")
+        if first_setup and candidate.get("setup") and candidate.get("setup") != first_setup:
+            self._armed.pop(symbol, None)
+            self._on_event("setup_disarmed", symbol, {"reason": "setup_changed"})
+            return False
+        if float(candidate.get("score") or 0) < float(current.get("first_score") or 0) - MAX_SCORE_DEGRADATION:
+            self._armed.pop(symbol, None)
+            self._on_event("setup_disarmed", symbol, {"reason": "score_degraded"})
+            return False
+        if float(candidate.get("intel_score") or 0) < float(current.get("intel_score") or 0) - MAX_SCORE_DEGRADATION:
+            self._armed.pop(symbol, None)
+            self._on_event("setup_disarmed", symbol, {"reason": "intel_degraded"})
+            return False
         if first_price > 0 and (now_price/first_price-1)*100 > MAX_ARM_DRIFT_PCT:
             self._armed.pop(symbol, None)
             self._on_event("setup_disarmed", symbol, {"reason": "price_ran_away"})

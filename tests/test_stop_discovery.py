@@ -78,6 +78,7 @@ def manager(monkeypatch):
     """Run manage_once against a fake broker with orders enabled."""
     trade_manager.TRACKED.clear()
     soft_stops.clear()
+    trade_manager.UNPROTECTED_CHECKS.clear()
     enabled = dataclasses.replace(trade_manager.settings, paper=True, enable_orders=True,
                                   auto_manage_positions=True, trade_after_hours=False)
     monkeypatch.setattr(trade_manager, "settings", enabled)
@@ -126,10 +127,41 @@ async def test_a_trailing_stop_does_not_rewrite_the_original_risk(manager, monke
 
 
 @pytest.mark.asyncio
+async def test_a_stop_that_disappears_later_triggers_the_unprotected_policy(manager, monkeypatch):
+    broker=FakeAlpaca([stop_order(price="9.60")],POSITION)
+    broker.closed=[]
+    async def close_position(symbol):
+        broker.closed.append(symbol)
+        return {"ok":True}
+    broker.close_position=close_position
+    monkeypatch.setattr(manager,"alpaca",broker)
+    await manager.manage_once()
+    broker.orders=[]
+    for _ in range(manager.settings.unprotected_position_grace_checks):
+        await manager.manage_once()
+    assert broker.closed == ["AAAA"]
+
+
+@pytest.mark.asyncio
 async def test_a_stop_above_entry_is_rejected_as_nonsense(manager, monkeypatch):
     monkeypatch.setattr(manager, "alpaca", FakeAlpaca([stop_order(price="10.50")], POSITION))
     await manager.manage_once()
     assert manager.TRACKED["AAAA"].risk_per_share() == pytest.approx(0.15)
+
+
+@pytest.mark.asyncio
+async def test_an_unprotected_position_is_flattened_after_the_grace_checks(manager, monkeypatch):
+    broker=FakeAlpaca([],POSITION)
+    broker.closed=[]
+    async def close_position(symbol):
+        broker.closed.append(symbol)
+        return {"ok":True}
+    broker.close_position=close_position
+    monkeypatch.setattr(manager,"alpaca",broker)
+    for _ in range(manager.settings.unprotected_position_grace_checks):
+        await manager.manage_once()
+    assert broker.closed == ["AAAA"]
+    assert "AAAA" not in manager.TRACKED
 
 
 def test_the_fallback_is_only_used_when_no_real_risk_is_known():

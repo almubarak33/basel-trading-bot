@@ -13,6 +13,7 @@ from ..arming import ArmingTracker
 from ..exits import evaluate_exit
 from ..indicators import compute_regime
 from ..intelligence import enrich_candidate
+from ..pretrade import evaluate_pretrade
 from ..scanner import assemble_candidates
 from ..session import NY, minutes_until_close, opening_delay_active, session_fraction
 from ..strategy import position_size
@@ -179,7 +180,8 @@ def run_backtest(store: BarStore, cfg: BacktestConfig, progress=None) -> Backtes
                     day_slice=ctx.universe.slices[symbol]; index=day_slice.index_at(moment)
                     snapshots[symbol]=build_snapshot(day_slice,index,cfg.execution); bars_map[symbol]=day_slice.window(index)
                 fraction=session_fraction(moment)
-                rows=assemble_candidates(symbols,change_map,active_rank,snapshots,bars_map,ctx.daily_history,regime,fraction)
+                rows=assemble_candidates(symbols,change_map,active_rank,snapshots,bars_map,ctx.daily_history,
+                                         regime,fraction,observed_at=moment)
                 enriched=[enrich_candidate(r) for r in rows]
                 for row in enriched:
                     for reason in row.get("reject_reasons",[]): rejected_reasons[reason]=rejected_reasons.get(reason,0)+1
@@ -224,16 +226,35 @@ def _submit(broker: SimulatedBroker, candidate: dict, equity: float, moment: dat
     if not (target>entry>stop>0):return False
     risk_pct=((entry-stop)/entry)*100
     if risk_pct>cfg_settings.max_stop_pct:return False
-    if len(broker.positions)>=cfg_settings.max_open_positions:return False
-    if symbol in broker.positions:return False
-    qty=position_size(equity,entry,stop)
-    if qty<1:return False
+    requested_qty=position_size(equity,entry,stop)
+    positions=[{
+        "symbol":position.symbol,"qty":position.qty,"avg_entry_price":position.entry_price,
+        "current_price":position.entry_price,"market_value":position.entry_price*position.qty,
+    } for position in broker.positions.values()]
+    open_orders=[{
+        "symbol":position.symbol,"side":"sell","type":"stop","status":"new",
+        "stop_price":position.stop,"qty":position.qty,
+    } for position in broker.positions.values()]
+    open_orders.extend({
+        "symbol":order.symbol,"side":"buy","type":"limit","status":"new",
+        "limit_price":order.limit,"qty":order.qty,"filled_qty":0,
+        "legs":[{"symbol":order.symbol,"side":"sell","type":"stop","status":"held",
+                 "stop_price":order.stop,"qty":order.qty}],
+    } for order in broker.pending.values())
+    reserved=sum(order.limit*order.qty for order in broker.pending.values())
+    preflight=evaluate_pretrade(
+        candidate,positions,open_orders,equity=equity,
+        buying_power=max(broker.cash-reserved,0),requested_qty=requested_qty,config=cfg_settings,
+    )
+    if not preflight.allowed:return False
+    qty=preflight.approved_qty
     profile=candidate.get("strategy_profile") or {}
     broker.place(PendingOrder(symbol=symbol,limit=entry,stop=stop,target=target,qty=qty,placed_at=moment,
         fixed_target=not cfg_settings.runner_mode,
         meta={"score":candidate.get("score"),"intel_score":candidate.get("intel_score"),"grade":candidate.get("grade"),
               "rvol":candidate.get("rvol"),"change_pct":candidate.get("change_pct"),"risk_pct":round(risk_pct,2),
               "entry_hour":moment.astimezone(NY).hour,"strategy_family":profile.get("family") or "UNKNOWN",
-              "strategy_fit_score":profile.get("fit_score"),"strategy_confidence":profile.get("confidence")},))
+              "strategy_fit_score":profile.get("fit_score"),"strategy_confidence":profile.get("confidence"),
+              "preflight":preflight.to_dict()},))
     cooldowns[symbol]=moment+timedelta(minutes=cfg_settings.symbol_cooldown_minutes)
     return True

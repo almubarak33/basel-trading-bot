@@ -159,6 +159,7 @@ class FakeAlpaca:
 @pytest.fixture
 def manager(monkeypatch):
     trade_manager.TRACKED.clear()
+    trade_manager.UNPROTECTED_CHECKS.clear()
     soft_stops.clear()
     monkeypatch.setattr(trade_manager, "settings", dataclasses.replace(
         trade_manager.settings, paper=True, enable_orders=True, auto_manage_positions=True,
@@ -217,6 +218,7 @@ async def test_the_software_stop_holds_above_the_line(manager, monkeypatch):
     soft_stops.remember("AAAA", 9.60)
     await manager.manage_once(now=AFTER)
     assert broker.submitted == []
+    assert manager.UNPROTECTED_CHECKS == {}
 
 
 @pytest.mark.asyncio

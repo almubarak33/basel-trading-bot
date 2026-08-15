@@ -10,6 +10,7 @@ from .session import NY, minutes_until_day_end, tradeable_now
 from . import soft_stops
 
 TRACKED: dict[str, PositionState] = {}
+UNPROTECTED_CHECKS: dict[str, int] = {}
 LAST_RUN = None
 LAST_ERROR = None
 LAST_ACTION = None
@@ -20,7 +21,8 @@ def state():
                 "runner_fail_checks":p.runner_fail_checks,"first_seen":p.first_seen.isoformat()}
              for s,p in TRACKED.items()}
     return {"enabled": settings.auto_manage_positions,"last_run":LAST_RUN,"last_error":LAST_ERROR,
-        "last_action":LAST_ACTION,"tracked":tracked,"soft_stops":soft_stops.snapshot()}
+            "last_action":LAST_ACTION,"tracked":tracked,"soft_stops":soft_stops.snapshot(),
+            "unprotected_checks":dict(UNPROTECTED_CHECKS)}
 
 
 def _qty(position: dict) -> int:
@@ -48,7 +50,9 @@ async def _close(symbol, reason, meta=None, extended=False, position=None, price
     payload={"reason":reason,"result":result,"position":position,"extended_hours":extended}
     if meta: payload.update(meta)
     log_event("auto_exit",symbol,json.dumps(payload))
-    TRACKED.pop(symbol,None); soft_stops.forget(symbol)
+    TRACKED.pop(symbol,None)
+    UNPROTECTED_CHECKS.pop(symbol,None)
+    soft_stops.forget(symbol)
 
 
 async def _flatten(positions, event, meta, extended):
@@ -64,7 +68,7 @@ async def _flatten(positions, event, meta, extended):
     else:
         result=await alpaca.close_all_positions()
     log_event(event,None,json.dumps({**meta,"result":result}))
-    TRACKED.clear(); soft_stops.clear()
+    TRACKED.clear(); UNPROTECTED_CHECKS.clear(); soft_stops.clear()
 
 
 async def manage_once(now: datetime | None = None):
@@ -76,7 +80,7 @@ async def manage_once(now: datetime | None = None):
     clock=await alpaca.clock()
     market_open=bool(clock.get("is_open",False))
     if not tradeable_now(now.astimezone(NY),market_open,settings.trade_after_hours,settings.trade_pre_market):
-        TRACKED.clear(); return
+        TRACKED.clear(); UNPROTECTED_CHECKS.clear(); return
     # الوسيط لا يقبل أمر سوق خارج 09:30–16:00، فكل مخرج هنا يصبح limit.
     extended=not market_open
 
@@ -84,7 +88,8 @@ async def manage_once(now: datetime | None = None):
     positions=await alpaca.positions()
     if risk.get("blocked") and positions and settings.close_on_daily_guard:
         await _flatten(positions,"risk_guard_flatten",{"risk":risk,"positions":positions},extended); return
-    if not positions: TRACKED.clear(); soft_stops.clear(); return
+    if not positions:
+        TRACKED.clear(); UNPROTECTED_CHECKS.clear(); soft_stops.clear(); return
 
     minutes_left=minutes_until_day_end(clock.get("next_close"),settings.trade_after_hours,now)
     if settings.eod_flatten_enabled and minutes_left is not None and 0<minutes_left<=settings.eod_flatten_minutes:
@@ -99,6 +104,9 @@ async def manage_once(now: datetime | None = None):
     bars_map=await alpaca.intraday_bars(symbols,minutes=180)
     regime=await alpaca.market_regime()
     stops=extract_stop_prices(await alpaca.open_orders())
+    active_symbols=set(symbols)
+    for symbol in list(UNPROTECTED_CHECKS):
+        if symbol not in active_symbols: UNPROTECTED_CHECKS.pop(symbol,None)
 
     for p in positions:
         symbol=(p.get("symbol") or "").upper()
@@ -112,14 +120,29 @@ async def manage_once(now: datetime | None = None):
         # الوقف عند الوسيط أمر يومي ينتهي عند الجرس. نحفظه ما دام قائماً لنطبّقه
         # بأنفسنا بعد ذلك، وإلا بقي المركز بلا حماية في الجلسة الممتدة.
         broker_stop=stops.get(symbol,0.0)
-        if broker_stop>0: soft_stops.remember(symbol,broker_stop)
-        protective=broker_stop or soft_stops.get(symbol)
+        broker_protected=broker_stop>0 and (broker_stop<current or broker_stop<=entry)
+        if broker_protected: soft_stops.remember(symbol,broker_stop)
+        software_stop=soft_stops.get(symbol)
+        protective=broker_stop if broker_protected else software_stop
         if rec.initial_risk_per_share is None and 0<protective<rec.entry:
             rec.initial_risk_per_share=rec.entry-protective
-        if broker_stop<=0 and 0<protective and current<=protective:
-            await _close(symbol,"soft_stop_hit",{"stop":protective,"current":current},
+        software_protected=extended and 0<software_stop<current
+        if extended and not broker_protected and software_stop>0 and current<=software_stop:
+            await _close(symbol,"soft_stop_hit",{"stop":software_stop,"current":current},
                          extended=extended,position=p,price=current)
             continue
+        if broker_protected or software_protected:
+            UNPROTECTED_CHECKS.pop(symbol,None)
+        else:
+            checks=UNPROTECTED_CHECKS.get(symbol,0)+1
+            UNPROTECTED_CHECKS[symbol]=checks
+            if checks==1:
+                log_event("protective_stop_missing",symbol,json.dumps({"entry":entry,"current":current,"checks":checks}))
+            if (settings.flatten_unprotected_positions and
+                    checks>=max(settings.unprotected_position_grace_checks,1)):
+                await _close(symbol,"missing_protective_stop",{"checks":checks},
+                             extended=extended,position=p,price=current)
+                continue
         decision=evaluate_exit(rec,current,bars_map.get(symbol,[]),regime,now,settings)
         if decision:
             await _close(symbol,decision.reason,decision.meta,extended=extended,position=p,price=current)

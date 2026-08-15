@@ -10,6 +10,7 @@ from .config import BacktestConfig, ExecutionModel
 from .data import BarStore, fetch_history
 from .metrics import format_report, summarize
 from .runner import run_backtest
+from .validation import format_validation_report, run_rolling_validation
 
 ASSUMPTION_NOTES = [
     "Quotes are not in minute bars: the spread filter uses a tick-based estimate.",
@@ -60,6 +61,11 @@ def main(argv=None):
     parser.add_argument("--legacy-screener-change", action="store_true",
                         help="Hardcode most-actives day change to 0, as the scanner did before it derived the real value")
     parser.add_argument("--json", type=Path, help="Write the full summary as JSON")
+    parser.add_argument("--walk-forward", action="store_true",
+                        help="Run rolling chronological out-of-sample validation")
+    parser.add_argument("--train-sessions", type=int, default=60)
+    parser.add_argument("--test-sessions", type=int, default=20)
+    parser.add_argument("--step-sessions", type=int, default=20)
     args = parser.parse_args(argv)
 
     if args.synthetic:
@@ -92,6 +98,14 @@ def main(argv=None):
     result = run_backtest(store, cfg, progress=lambda day, count: print(f"  … {day}  trades={count}", flush=True))
     summary = summarize(result)
     print(format_report(summary, ASSUMPTION_NOTES))
+
+    if args.walk_forward:
+        validation=run_rolling_validation(
+            store,cfg,train_sessions=args.train_sessions,test_sessions=args.test_sessions,
+            step_sessions=args.step_sessions,
+        )
+        summary["validation"]=validation
+        print(format_validation_report(validation))
 
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)

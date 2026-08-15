@@ -3,7 +3,10 @@ import re
 
 import pytest
 
-from app.orders import MAX_CLIENT_ORDER_ID, build_bracket_order, build_client_order_id, build_runner_order
+from datetime import datetime, timezone
+
+from app.orders import (MAX_CLIENT_ORDER_ID, build_bracket_order, build_client_order_id,
+                        build_runner_order, build_signal_order_id)
 
 
 # ---- client_order_id ----------------------------------------------------
@@ -108,3 +111,15 @@ def test_runner_orders_also_get_unique_ids():
     ids = {build_runner_order("AAAA", 10, 10.0, 9.5, source="intel")["client_order_id"]
            for _ in range(50)}
     assert len(ids) == 50
+
+
+def test_automatic_signal_ids_are_stable_inside_the_retry_window():
+    at=datetime(2024,3,4,15,2,tzinfo=timezone.utc)
+    first=build_signal_order_id("AAAA","PULLBACK_RECLAIM",at)
+    second=build_signal_order_id("AAAA","PULLBACK_RECLAIM",at.replace(minute=4))
+    assert first == second
+
+
+def test_runner_can_use_a_stable_signal_id_for_idempotency():
+    payload=build_runner_order("AAAA",10,10,9.5,"intel",client_order_id="stable-id")
+    assert payload["client_order_id"] == "stable-id"

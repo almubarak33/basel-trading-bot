@@ -25,6 +25,10 @@ python -m app.backtest.cli \
 
 # Re-run instantly from saved bars, no re-download.
 python -m app.backtest.cli --load data/q1.json
+
+# Fixed-parameter rolling out-of-sample validation. No optimization is performed.
+python -m app.backtest.cli --load data/q1.json --walk-forward \
+  --train-sessions 60 --test-sessions 20 --step-sessions 20
 ```
 
 `universe.txt` is one symbol per line. Build it with the companion command
@@ -46,6 +50,8 @@ See *Survivorship* below for why that matters.
 | `--legacy-risk-assumption` | Measure R against a flat 1.5% of entry, as the manager did before it read the stop from the broker. |
 | `--legacy-screener-change` | Hardcode most-actives day change to `0`, as the scanner did before it derived the real value. |
 | `--json PATH` | Write the full summary for diffing between runs. |
+| `--walk-forward` | Run consecutive chronological train/test windows and report Paper-pilot readiness. |
+| `--train-sessions`, `--test-sessions`, `--step-sessions` | Size and spacing of rolling validation folds. |
 
 Defaults reproduce current live behaviour, so a baseline run measures the bot as
 it actually is. The two `--legacy-*` flags reproduce defects that have since
@@ -57,7 +63,8 @@ riser makes the cut and the flag changes nothing.
 
 ## What the report tells you
 
-Win rate, expectancy in R, profit factor, max drawdown, Sharpe, fill rate, and
+Win rate, expectancy in R, profit factor, max drawdown, Sharpe, Sortino, Calmar,
+fill rate, and
 breakdowns by exit reason, confidence grade, and entry hour. The reject-reason
 counts show which filter is doing the gatekeeping — usually the fastest route to
 understanding why a parameter change did nothing.
@@ -79,6 +86,10 @@ These are choices, not measurements. Read results with them in mind:
   target, with the stop winning when one bar spans both.
 - **Stops pay slippage** (`stop_slippage_bps`); manager exits use the observed
   bar price and legacy target limits do not.
+- **Liquidity participation is bounded.** The same pre-trade gate as production
+  reduces quantity against the latest completed one-minute volume and trailing
+  average daily volume. This is a quantity ceiling, not a full market-impact
+  model.
 - **The screener is reconstructed** from your supplied universe by ranking on
   intraday change and cumulative volume. Alpaca's live movers endpoint has no
   historical equivalent, so this approximates *which* symbols the bot would have
@@ -96,6 +107,19 @@ Every scan is built from a bisect over closed bars only, and the day's `%` chang
 is measured against the *previous* session's daily close, never the current
 close. The 20-day volume average that RVOL depends on uses sessions strictly
 before the one being traded. `tests/test_universe.py` covers each of these.
+
+Snapshot trade, quote and bar timestamps are synthesized from the latest closed
+bar and passed through the same data-integrity gate as live execution. Historical
+quotes remain unavailable, so the spread itself is still estimated as described
+above.
+
+## Rolling validation
+
+`--walk-forward` does not search for better parameters. It holds the strategy
+fixed, evaluates consecutive unseen windows, and gates each fold on sample size,
+positive expectancy, profit factor, Sharpe, drawdown and expectancy retention.
+This reduces one common source of overfitting, but a passing report is not a
+profit guarantee and does not replace Paper forward testing.
 
 ## Survivorship
 

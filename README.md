@@ -31,10 +31,32 @@ York time. Execution is narrower than discovery: the regular session plus
 after-hours until 20:00, never premarket — see below.
 
 Aggressive discovery does not remove execution protection. Orders remain Paper
-only, require confirmation on two consecutive scans, risk `0.5%` of equity per
-trade, cap a position at `20%` of equity, stop at four open positions, and halt
-after a `2%` daily loss by default. Sub-dollar order prices retain four decimal
-places.
+only, require a stable setup on two consecutive scans, risk `0.5%` of equity per
+trade, cap a position at `20%` of equity, stop at four committed positions or
+working entries, cap gross exposure at `60%` and portfolio heat at `2%`, and halt
+after a `2%` daily loss by default. Order size is reduced to at most `5%` of the
+latest one-minute volume and `0.1%` of 20-day average daily volume. Sub-dollar
+order prices retain four decimal places.
+
+## Professional execution controls
+
+The autonomous path runs a broker-aware preflight immediately before submission:
+
+- latest quote, trade and bar timestamps must be fresh and the NBBO/OHLC data
+  must be internally consistent;
+- filled positions and working buy orders both consume portfolio slots and gross
+  exposure;
+- every existing position must have a visible broker stop before more risk is
+  added, and a position whose stop disappears is flattened after a short grace
+  period;
+- projected gross exposure, aggregate stop risk (portfolio heat), buying power
+  buffer, and liquidity participation must all pass;
+- automatic orders use a deterministic five-minute signal id, while the broker's
+  open-order state prevents duplicate entries after a retry or restart.
+
+Failed symbols remain visible for diagnosis but cannot become an automatic
+order. See [docs/PROFESSIONAL_ENGINE.md](docs/PROFESSIONAL_ENGINE.md) for the
+standards mapped to these controls and the remaining limitations.
 
 ## Interactive stock chart
 
@@ -153,6 +175,7 @@ Two details worth preserving when editing translations:
 pytest                                    # run the test suite
 python -m app.backtest.cli --synthetic 5  # smoke-test the harness, no API keys
 python -m app.backtest.cli --start 2024-01-02 --end 2024-03-28 --symbols-file universe.txt
+python -m app.backtest.cli --load data/history.json --walk-forward
 ```
 
 See [docs/BACKTESTING.md](docs/BACKTESTING.md) for the modelling assumptions —
@@ -162,8 +185,9 @@ they matter for interpreting any result.
 
 Tracked, not yet fixed:
 
-- Open-position limits count filled positions only, so working orders can push
-  real exposure past `MAX_OPEN_POSITIONS`.
+- Live market and order updates use REST polling rather than WebSocket streams.
+- A strategy still needs enough real rolling out-of-sample history and Paper
+  forward trades before it can be considered validated.
 - Catalyst and insider feeds are stubs reporting `UNVERIFIED`.
 - `static/demo.html` is a leftover standalone demo page and is still
   English-only; the live dashboard is `static/index.html`.

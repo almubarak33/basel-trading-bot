@@ -79,19 +79,24 @@ def enrich_candidate(row: dict) -> dict:
     if x.get("market_regime_caution"): bearish.add("regime_caution")
     if not x.get("pullback_seen") and not breakout: bearish.add("no_clean_pullback")
     if not x.get("reclaim_confirmed") and not breakout: bearish.add("reclaim_missing")
+    data_quality=x.get("data_quality") or {}
+    if not data_quality.get("execution_allowed", True): bearish.add("degraded_market_data")
 
     x["bull_case"] = bullish.texts()
     x["bear_case"] = bearish.texts()
     x["bull_codes"] = bullish.codes
     x["bear_codes"] = bearish.codes
-    if x.get("eligible") and composite >= settings.min_intel_score:
+    quality_allowed=data_quality.get("execution_allowed", True)
+    if x.get("eligible") and composite >= settings.min_intel_score and quality_allowed:
         action="ARM"; thesis_code="thesis_arm"
     elif composite >= 75:
         action="WATCH"; thesis_code="thesis_watch"
     else:
         action="AVOID"; thesis_code="thesis_avoid"
     x["decision"]={"action":action,"thesis":render(thesis_code),"thesis_code":thesis_code,
-                   "confidence":x["grade"],"profile":settings.trading_profile}
+                   "confidence":x["grade"],"profile":settings.trading_profile,
+                   "execution_gate":"PASS" if quality_allowed else "BLOCKED",
+                   "execution_blockers":data_quality.get("blockers") or []}
 
     # Preserve verified/diagnostic catalyst data supplied by the live scanner.
     # Historical backtests intentionally keep it unavailable until historical

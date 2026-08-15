@@ -18,6 +18,23 @@ def build_client_order_id(symbol: str, source: str) -> str:
     return f"basel-{source}-{clean}-{stamp}-{secrets.token_hex(3)}"[:MAX_CLIENT_ORDER_ID]
 
 
+def build_signal_order_id(symbol: str, setup: str, observed_at: datetime | None = None,
+                          bucket_minutes: int = 5) -> str:
+    """Stable id for one automated signal window.
+
+    A retry after a timeout receives the same id, allowing the broker to reject
+    the duplicate instead of silently opening a second position.
+    """
+    observed_at = observed_at or datetime.now(timezone.utc)
+    if observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=timezone.utc)
+    bucket_seconds = max(bucket_minutes, 1) * 60
+    bucket = int(observed_at.timestamp()) // bucket_seconds
+    clean_symbol = _UNSAFE.sub("", symbol.lower()) or "sym"
+    clean_setup = _UNSAFE.sub("", setup.lower()) or "setup"
+    return f"basel-auto-{clean_symbol}-{clean_setup}-{bucket}"[:MAX_CLIENT_ORDER_ID]
+
+
 def build_bracket_order(symbol: str, qty: int, entry: float, stop: float, target: float,
                         source: str) -> dict:
     """Legacy fixed-target bracket order, still available for manual experiments."""
@@ -30,7 +47,8 @@ def build_bracket_order(symbol: str, qty: int, entry: float, stop: float, target
     }
 
 
-def build_runner_order(symbol: str, qty: int, entry: float, stop: float, source: str) -> dict:
+def build_runner_order(symbol: str, qty: int, entry: float, stop: float, source: str,
+                       client_order_id: str | None = None) -> dict:
     """OTO entry with broker-native stop only; Basel Trader manages the upside.
 
     There is intentionally no fixed take-profit. This allows a strong momentum
@@ -41,11 +59,12 @@ def build_runner_order(symbol: str, qty: int, entry: float, stop: float, source:
         "symbol": symbol.upper(), "qty": str(qty), "side": "buy", "type": "limit",
         "time_in_force": "day", "limit_price": price_string(entry), "order_class": "oto",
         "stop_loss": {"stop_price": price_string(stop)},
-        "client_order_id": build_client_order_id(symbol, source),
+        "client_order_id": client_order_id or build_client_order_id(symbol, source),
     }
 
 
-def build_extended_hours_entry(symbol: str, qty: int, entry: float, source: str) -> dict:
+def build_extended_hours_entry(symbol: str, qty: int, entry: float, source: str,
+                               client_order_id: str | None = None) -> dict:
     """Plain limit buy for the extended session.
 
     Outside 09:30–16:00 the broker accepts only simple limit day/gtc orders —
@@ -57,7 +76,7 @@ def build_extended_hours_entry(symbol: str, qty: int, entry: float, source: str)
         "symbol": symbol.upper(), "qty": str(qty), "side": "buy", "type": "limit",
         "time_in_force": "day", "limit_price": price_string(entry),
         "extended_hours": True,
-        "client_order_id": build_client_order_id(symbol, source),
+        "client_order_id": client_order_id or build_client_order_id(symbol, source),
     }
 
 

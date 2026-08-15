@@ -49,6 +49,10 @@ def scanner_profile() -> dict:
         "min_rvol":settings.min_rvol,"universe_limit":settings.screener_universe_limit,
         "movers_top":settings.movers_top,"actives_top":settings.actives_top,
         "extended_hours":settings.scan_extended_hours,
+        "max_gross_exposure_pct":settings.max_gross_exposure_pct*100,
+        "max_portfolio_heat_pct":settings.max_portfolio_heat_pct*100,
+        "max_bar_participation_pct":settings.max_bar_participation_pct*100,
+        "fresh_data_required":settings.require_fresh_market_data,
     }
 
 class OrderRequest(BaseModel):
@@ -117,6 +121,7 @@ async def pro_dashboard():
             "scanner_diagnostics":diagnostics,
             "modules":{"smart_radar":True,"smart_map":True,"risk_engine":True,"market_regime":True,
                 "catalyst_feed":True,"microstructure":True,"strategy_selector":True,"insider_sec":False,
+                "data_integrity":True,"portfolio_preflight":True,
                 "paper_execution":alpaca.configured(),"autonomous_entry":True,"autonomous_exit":True}}
     except Exception as e: raise HTTPException(502,f"Pro dashboard error: {e}")
 

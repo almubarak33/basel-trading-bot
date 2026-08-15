@@ -726,6 +726,7 @@ body{
         <div class="stack">
           <div class="stack-item"><div><div class="stack-name">الإيقاف الطارئ</div><div class="stack-note">يعطل المحرك ويغلق المراكز عند الطلب</div></div><b id="killStatus">—</b></div>
           <div class="stack-item"><div><div class="stack-name">حالة المخاطرة</div><div class="stack-note">توقف تلقائي عند تجاوز الحد اليومي</div></div><b id="riskGate">—</b></div>
+          <div class="stack-item"><div><div class="stack-name">آخر فحص قبل التنفيذ</div><div class="stack-note">البيانات والتعرض والسيولة والأوامر المعلقة</div></div><b id="preflightGate">—</b></div>
         </div>
       </div>
     </div>
@@ -804,6 +805,9 @@ body{
         <div class="control-row"><div class="control-copy"><b>مخاطرة الصفقة</b><span>تحدد حجم المركز من مسافة الوقف</span></div><b class="num" id="settingsRiskTrade">—</b></div>
         <div class="control-row"><div class="control-copy"><b>الخسارة اليومية</b><span>يتوقف المحرك آلياً عند بلوغها</span></div><b class="num" id="settingsDailyLoss">—</b></div>
         <div class="control-row"><div class="control-copy"><b>حد جودة الدخول</b><span>أقل تقييم يسمح بتسليح الإشارة</span></div><b class="num" id="settingsMinScore">—</b></div>
+        <div class="control-row"><div class="control-copy"><b>التعرض الكلي</b><span>المراكز والأوامر المعلقة بعد الصفقة</span></div><b class="num" id="settingsGrossExposure">—</b></div>
+        <div class="control-row"><div class="control-copy"><b>حرارة المحفظة</b><span>إجمالي المبلغ المعرض للوقف</span></div><b class="num" id="settingsPortfolioHeat">—</b></div>
+        <div class="control-row"><div class="control-copy"><b>مشاركة شمعة الدقيقة</b><span>يخفض الحجم تلقائياً في السيولة الضعيفة</span></div><b class="num" id="settingsBarParticipation">—</b></div>
       </div>
 
       <div class="panel">
@@ -1073,6 +1077,10 @@ function signalCard(c){
       <div class="track"><div class="fill" style="width:${Math.max(0,Math.min(100,v))}%"></div></div></div>`).join('');
   const chips=[...tcs(c.bull_codes).slice(0,3),...tcs(c.bear_codes).slice(0,2)]
     .map(t=>`<span class="chip">${esc(t)}</span>`).join('');
+  const dq=c.data_quality||null;
+  const dataBadge=!dq?'':dq.execution_allowed
+    ?`<span class="badge ok">سلامة البيانات ${nf(dq.score,0)}</span>`
+    :`<span class="badge hot">التنفيذ محظور · البيانات</span>`;
   return `<button class="sig ${act==='ARM'?'arm':''}" onclick="openStock('${esc(c.symbol)}')">
     <div class="sig-h">
       <div style="display:flex;align-items:center;gap:8px">
@@ -1086,7 +1094,7 @@ function signalCard(c){
       <div><div class="label">الدرجة</div><b class="num">${esc(ltr(c.grade||'—'))}</b></div>
     </div>
     <div class="chips" style="margin-top:10px">
-      <span class="badge info">${setupName(c.setup)}</span>${B(rvolBadge(c.rvol))}${B(spreadBadge(c.spread_pct,c.price))}${B(riskBadge(c.risk_pct))}
+      <span class="badge info">${setupName(c.setup)}</span>${dataBadge}${B(rvolBadge(c.rvol))}${B(spreadBadge(c.spread_pct,c.price))}${B(riskBadge(c.risk_pct))}
     </div>
     <div class="bars">${bars}</div>
     <div class="sub" style="margin-top:12px;line-height:1.65">${esc(tcode((c.decision||{}).thesis_code))}</div>
@@ -1153,6 +1161,9 @@ function render(d){
   $('settingsRiskTrade').textContent=st.risk_per_trade_pct!=null?nf(st.risk_per_trade_pct,2)+'%':'—';
   $('settingsDailyLoss').textContent=st.max_daily_loss_pct!=null?nf(st.max_daily_loss_pct,2)+'%':'—';
   $('settingsMinScore').textContent=st.min_score!=null?nf(st.min_score,0):'—';
+  $('settingsGrossExposure').textContent=profile.max_gross_exposure_pct!=null?nf(profile.max_gross_exposure_pct,0)+'%':'—';
+  $('settingsPortfolioHeat').textContent=profile.max_portfolio_heat_pct!=null?nf(profile.max_portfolio_heat_pct,2)+'%':'—';
+  $('settingsBarParticipation').textContent=profile.max_bar_participation_pct!=null?nf(profile.max_bar_participation_pct,1)+'%':'—';
   $('settingsProfile').textContent=profile.profile||'AGGRESSIVE';
   $('settingsPriceScope').textContent=profile.price_max==null
     ? `${money(profile.price_min||.01)} فأعلى`:`${money(profile.price_min)} – ${money(profile.price_max)}`;
@@ -1260,6 +1271,9 @@ function render(d){
     st.option_alpha_configured?'<span class="warn">جاهز غير مفعّل</span>':'<span class="muted">غير مربوط</span>';
   $('killStatus').innerHTML=st.kill_switch?'<span class="down">مفعّل</span>':'<span class="up">غير مفعّل</span>';
   $('riskGate').innerHTML=(st.risk_status||{}).blocked?'<span class="down">محظور</span>':'<span class="up">مسموح</span>';
+  const preflight=eng.last_preflight;
+  $('preflightGate').innerHTML=!preflight?'<span class="muted">لم يُختبر بعد</span>':preflight.allowed
+    ?'<span class="up">اجتاز</span>':`<span class="down">محظور · ${preflight.blockers?.length||0}</span>`;
 
   const det=reg.details||{};
   const tickers=['SPY','QQQ'].map(s=>{
@@ -1302,11 +1316,13 @@ function render(d){
   const mnames={smart_radar:'الرادار الذكي',smart_map:'الخريطة الذكية',risk_engine:'محرك المخاطرة',
     market_regime:'حالة السوق',catalyst_feed:'المحفزات',microstructure:'البنية الدقيقة',
     strategy_selector:'اختيار الاستراتيجية',insider_sec:'تداولات الداخليين',
+    data_integrity:'سلامة البيانات',portfolio_preflight:'فحص ما قبل التنفيذ',
     paper_execution:'التنفيذ التجريبي',autonomous_entry:'دخول تلقائي',autonomous_exit:'خروج تلقائي'};
   const mnotes={smart_radar:'فرز الفرص حسب الجودة',smart_map:'خريطة قرار متعددة العوامل',
     risk_engine:'حجم مركز وحد خسارة',market_regime:'فلتر اتجاه السوق العام',
     catalyst_feed:'أخبار ومحفزات',microstructure:'سيولة وسبريد وحجم',
     strategy_selector:'اختيار نمط الدخول',insider_sec:'مصدر غير مفعّل حالياً',
+    data_integrity:'حداثة الأسعار واتساق الشموع',portfolio_preflight:'التعرض والسيولة والأوامر المعلقة',
     paper_execution:'تنفيذ آمن قبل الحقيقي',autonomous_entry:'دخول مشروط ومسلّح',
     autonomous_exit:'وقف واقٍ، امتداد مفتوح، وانعكاس مؤكّد'};
   $('automationStack').innerHTML=Object.entries(d.modules||{}).map(([k,v])=>
@@ -1362,6 +1378,7 @@ function drawTrades(){
     const rows=p.closed||[];
     const rn={target:'بلوغ الهدف القديم',take_profit:'بلوغ هدف ثابت قديم',stop:'وقف الخسارة',stop_loss:'وقف الخسارة',time_stop:'وقف زمني',
       thesis_invalidated:'إبطال الفكرة',profit_protection:'حماية ربح مؤكّدة',
+      missing_protective_stop:'فقدان وقف الحماية',
       market_regime_risk_off:'حالة السوق',eod_flatten:'إغلاق نهاية اليوم',
       runner:'وقف متحرك',runner_trailing_exit:'انعكاس مؤكّد بعد امتداد'};
     html=rows.length?rows.map(t=>`<div class="card tight"><div class="row">
