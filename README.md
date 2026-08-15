@@ -35,11 +35,28 @@ trade, cap a position at `20%` of equity, stop at four open positions, and halt
 after a `2%` daily loss by default. Sub-dollar order prices retain four decimal
 places.
 
+## Interactive stock chart
+
+Stock detail uses the vendored TradingView Lightweight Charts `5.2.0` build.
+Candles and volume support crosshair inspection, mouse/touch pan, wheel/pinch
+zoom, and one-day/five-day ranges. Completed daily closes appear below the
+chart and the most recent prior close is drawn as a reference line.
+
+## Runner exits
+
+The displayed `2R` level is a performance reference, not a take-profit order.
+Both automated and manual Paper entries submit an OTO order with a broker-native
+protective stop and no fixed upside cap. After a position expands, the manager
+tracks peak R and only takes runner profit after the configured giveback floor,
+a price below EMA9, a falling latest bar, and two consecutive checks. Hard
+stops, thesis failure, the daily risk guard, and end-of-day flattening remain
+independent protections.
+
 ## End of day
 
-Bracket legs are day orders, so a position that survives to the bell loses its
-stop and take-profit and carries into the next session's opening gap
-unprotected. Two rules prevent that:
+Protective stop legs are day orders, so a position that survives to the bell
+loses its stop and carries into the next session's opening gap unprotected. Two
+rules prevent that:
 
 - New entries stop `NO_ENTRY_MINUTES_BEFORE_CLOSE` (30) before the close.
 - Everything still open is flattened `EOD_FLATTEN_MINUTES_BEFORE_CLOSE` (10)

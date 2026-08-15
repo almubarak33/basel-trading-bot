@@ -382,6 +382,17 @@ body{
 .sig.arm{border-color:color-mix(in srgb,var(--up) 60%,var(--line))}
 .gauge{width:92px;height:92px}.gauge svg{width:92px;height:92px}
 .chart{height:220px;border-radius:12px;background:linear-gradient(180deg,color-mix(in srgb,var(--brand-soft) 30%,transparent),transparent)}
+.stock-chart-shell{position:relative;margin-top:8px;border:1px solid var(--line);border-radius:14px;background:var(--card2);overflow:hidden}
+.stock-chart{width:100%;height:340px;direction:ltr}
+.chart-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.chart-legend{min-width:0;display:flex;flex-wrap:wrap;gap:5px 10px;font-size:10.5px;color:var(--muted);direction:ltr;text-align:left}
+.chart-legend b{color:var(--ink);font-size:11px}
+.chart-range{display:flex;gap:4px;padding:3px;border:1px solid var(--line);border-radius:11px;background:var(--card2);flex:none}
+.chart-range button{min-width:42px;padding:7px 9px;border-radius:8px;color:var(--muted);font-size:10.5px;font-weight:900}
+.chart-range button.on{background:var(--brand);color:#fff;box-shadow:var(--sh-sm)}
+.previous-closes{display:flex;gap:7px;overflow-x:auto;margin-top:10px;padding-bottom:2px}
+.previous-close{flex:0 0 auto;min-width:105px;border:1px solid var(--line);background:var(--card2);border-radius:11px;padding:8px 10px}
+.previous-close span{display:block;color:var(--muted);font-size:9.5px}.previous-close b{display:block;margin-top:3px;font-size:12px}
 
 .settings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
 .control-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
@@ -562,7 +573,7 @@ body{
           <div class="panel">
             <div class="panel-title"><h3>المراكز</h3><span class="badge mute">Portfolio</span></div>
             <div class="stack">
-              <div class="stack-item"><div><div class="stack-name">صفقات مفتوحة</div><div class="stack-note">تدار آلياً بالوقف والهدف</div></div><b class="num" id="openCount">—</b></div>
+              <div class="stack-item"><div><div class="stack-name">صفقات مفتوحة</div><div class="stack-note">وقف واقٍ وخروج عند انعكاس مؤكّد</div></div><b class="num" id="openCount">—</b></div>
               <div class="stack-item"><div><div class="stack-name">صفقات مغلقة</div><div class="stack-note">سجل الأداء التاريخي</div></div><b class="num" id="closedCount">—</b></div>
               <div class="stack-item"><div><div class="stack-name">ربح غير محقّق</div><div class="stack-note">يتغير مع السعر الحالي</div></div><b class="num" id="openPnl">—</b></div>
             </div>
@@ -826,6 +837,7 @@ body{
 </nav>
 </div>
 
+<script src="/static/vendor/lightweight-charts-5.2.0.min.js"></script>
 <script>
 /* ============================================================
    أدوات
@@ -839,6 +851,7 @@ const pct=(x,d=2)=>(x>0?'+':'')+nf(x,d)+'%';
 const cls=x=>Number(x)>0?'up':Number(x)<0?'down':'';
 
 let DATA=null, PAGE='home', RADAR_FILTER='all', TRADE_TAB='open', STOCK=null, STOCK_SYMBOL='';
+let STOCK_CHART=null, STOCK_CHART_RANGE='5D';
 let CAT={};   /* كتالوج الرسائل — الخادم يرسل رموزاً لا نصوصاً جاهزة */
 const APP_PAGES=['home','radarPage','marketPage','logPage','settingsPage','stockPage'];
 const ROUTE_TO_PAGE={home:'home',radar:'radarPage',market:'marketPage',log:'logPage',settings:'settingsPage'};
@@ -926,7 +939,8 @@ async function checkSession(){
 /* الثيم */
 function setTheme(t){ document.documentElement.dataset.theme=t;
   $('themeBtn').textContent=t==='dark'?'فاتح':'داكن'; localStorage.setItem('theme',t);
-  document.querySelector('meta[name=theme-color]').setAttribute('content',t==='dark'?'#0C0B14':'#F4F1FC'); }
+  document.querySelector('meta[name=theme-color]').setAttribute('content',t==='dark'?'#0C0B14':'#F4F1FC');
+  if(STOCK&&PAGE==='stockPage') requestAnimationFrame(renderStockChart); }
 function toggleTheme(){ setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'); }
 
 /* التنقّل: الحالة داخل الرابط حتى تبقى بعد التحديث وتعمل أزرار الرجوع والتقدم */
@@ -977,7 +991,7 @@ function levelLadder(c){
         stop=Number(c.stop)||0, target=Number(c.target)||0;
   const d=v=>price>0?((v/price-1)*100):0;
   const rows=[
-    {n:'الهدف',      p:target, note:'جني الأرباح', col:'var(--up)'},
+    {n:'مرجع 2R',    p:target, note:'للقياس وليس أمر بيع', col:'var(--up)'},
     {n:'الدخول',     p:entry,  note:'سعر الأمر المحدد', col:'var(--brand)'},
     {n:'السعر الآن', p:price,  now:true, col:'var(--brand)'},
     {n:'الوقف',      p:stop,   note:'إبطال الفكرة', col:'var(--down)'},
@@ -997,7 +1011,7 @@ function scenarios(c){
   if(!(entry&&stop&&target)) return '';
   const armed=(c.decision||{}).action==='ARM';
   const s=[
-    {dir:'up',t:'تأكيد الدخول',cond:`إغلاق شمعة فوق ${money(entry)} مع استمرار الحجم`,
+    {dir:'up',t:'امتداد الزخم',cond:`الثبات فوق ${money(entry)} مع استمرار الحجم ودون انعكاس مؤكّد`,
      lv:target, inv:stop, near:price>=entry*0.995, dim:false},
     {dir:'down',t:'رفض عند الدخول',cond:`فشل الثبات فوق ${money(entry)} وتراجع الحجم`,
      lv:stop, inv:entry, near:false, dim:false},
@@ -1165,7 +1179,7 @@ function render(d){
         <span class="pill num">${esc(top.symbol)}</span></div>
       <div class="trio">
         <div><div class="label">الدخول</div><div class="val sm num">${money(top.entry)}</div></div>
-        <div><div class="label">الهدف</div><div class="val sm num up">${money(top.target)}</div></div>
+        <div><div class="label">مرجع 2R</div><div class="val sm num up">${money(top.target)}</div></div>
         <div><div class="label">الوقف</div><div class="val sm num down">${money(top.stop)}</div></div>
       </div>
       <div class="sub" style="margin-top:11px">${esc(tcode((top.decision||{}).thesis_code))}</div>
@@ -1252,7 +1266,7 @@ function render(d){
     catalyst_feed:'أخبار ومحفزات',microstructure:'سيولة وسبريد وحجم',
     strategy_selector:'اختيار نمط الدخول',insider_sec:'مصدر غير مفعّل حالياً',
     paper_execution:'تنفيذ آمن قبل الحقيقي',autonomous_entry:'دخول مشروط ومسلّح',
-    autonomous_exit:'وقف، هدف، وحماية أرباح'};
+    autonomous_exit:'وقف واقٍ، امتداد مفتوح، وانعكاس مؤكّد'};
   $('automationStack').innerHTML=Object.entries(d.modules||{}).map(([k,v])=>
     `<div class="stack-item"><div><div class="stack-name">${esc(mnames[k]||k)}</div>
       <div class="stack-note">${esc(mnotes[k]||'وحدة تشغيل')}</div></div>
@@ -1304,9 +1318,10 @@ function drawTrades(){
       </div>`).join(''):'<div class="card empty">لا توجد صفقات مفتوحة.</div>';
   } else if(TRADE_TAB==='closed'){
     const rows=p.closed||[];
-    const rn={target:'بلوغ الهدف',stop:'وقف الخسارة',time_stop:'وقف زمني',
-      thesis_invalidated:'إبطال الفكرة',profit_protection:'حماية الأرباح',
-      market_regime_risk_off:'حالة السوق',eod_flatten:'إغلاق نهاية اليوم',runner:'وقف متحرك'};
+    const rn={target:'بلوغ الهدف القديم',take_profit:'بلوغ هدف ثابت قديم',stop:'وقف الخسارة',stop_loss:'وقف الخسارة',time_stop:'وقف زمني',
+      thesis_invalidated:'إبطال الفكرة',profit_protection:'حماية ربح مؤكّدة',
+      market_regime_risk_off:'حالة السوق',eod_flatten:'إغلاق نهاية اليوم',
+      runner:'وقف متحرك',runner_trailing_exit:'انعكاس مؤكّد بعد امتداد'};
     html=rows.length?rows.map(t=>`<div class="card tight"><div class="row">
         <div><b class="sym num" style="font-size:16px">${esc(t.symbol)}</b>
           <div class="lv-note num">${money(t.entry)} ← ${money(t.exit)}</div></div>
@@ -1337,6 +1352,7 @@ function drawTrades(){
 async function openStock(sym,navOptions={}){
   sym=String(sym||'').toUpperCase();
   if(!/^[A-Z0-9.-]{1,10}$/.test(sym)) return;
+  if(sym!==STOCK_SYMBOL) STOCK_CHART_RANGE='5D';
   STOCK_SYMBOL=sym; go('stockPage',navOptions); $('stockSymbol').textContent=sym;
   $('stockBody').innerHTML='<div class="card empty">جاري التحميل…</div>';
   try{
@@ -1345,7 +1361,7 @@ async function openStock(sym,navOptions={}){
   }catch(e){ if(e.message!=='unauth') $('stockBody').innerHTML='<div class="card empty">تعذّر تحميل بيانات السهم.</div>'; }
 }
 
-function candles(bars){
+function staticCandles(bars){
   const b=(bars||[]).filter(x=>Number(x.c)>0).slice(-90);
   if(b.length<2) return '<div class="card empty">لا توجد شموع كافية.</div>';
   const hi=Math.max(...b.map(x=>+x.h||+x.c)), lo=Math.min(...b.map(x=>+x.l||+x.c));
@@ -1364,7 +1380,99 @@ function candles(bars){
       <span class="sub">نطاق الجلسة</span><span class="sub num">${money(hi)}</span></div>`;
 }
 
+const NY_DATE=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+const NY_STAMP=new Intl.DateTimeFormat('ar-SA',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+function chartTime(value,index,total){
+  if(typeof value==='number'&&isFinite(value)){
+    if(value>1e12) return Math.floor(value/1000);
+    if(value>1e9) return Math.floor(value);
+  }
+  const parsed=Date.parse(value);
+  return isFinite(parsed)?Math.floor(parsed/1000):Math.floor(Date.now()/1000)-(total-index)*300;
+}
+function normalizedChartBars(source){
+  const map=new Map(), rows=(source||[]).filter(x=>Number(x.c)>0);
+  rows.forEach((x,i)=>{
+    const time=chartTime(x.t,i,rows.length);
+    map.set(time,{time,open:Number(x.o)||Number(x.c),high:Number(x.h)||Number(x.c),
+      low:Number(x.l)||Number(x.c),close:Number(x.c),volume:Number(x.v)||0});
+  });
+  return [...map.values()].sort((a,b)=>a.time-b.time);
+}
+function rangedChartBars(source){
+  const rows=normalizedChartBars(source);
+  const sessions=[...new Set(rows.map(x=>NY_DATE.format(new Date(x.time*1000))))];
+  const keep=new Set(sessions.slice(STOCK_CHART_RANGE==='1D'?-1:-5));
+  return rows.filter(x=>keep.has(NY_DATE.format(new Date(x.time*1000))));
+}
+function previousCloseCards(rows){
+  return (rows||[]).length?(rows||[]).map(x=>`<div class="previous-close">
+    <span>${esc(new Date(x.date+'T12:00:00Z').toLocaleDateString('ar-SA',{month:'short',day:'numeric'}))}</span>
+    <b class="num">${money(x.close)}</b></div>`).join(''):
+    '<span class="sub">لا تتوفر إغلاقات مكتملة.</span>';
+}
+function changeStockChartRange(range){
+  STOCK_CHART_RANGE=range==='1D'?'1D':'5D';
+  document.querySelectorAll('.chart-range button').forEach(b=>b.classList.toggle('on',b.dataset.range===STOCK_CHART_RANGE));
+  renderStockChart();
+}
+function destroyStockChart(){
+  if(STOCK_CHART){ STOCK_CHART.remove(); STOCK_CHART=null; }
+}
+function chartLegend(bar){
+  if(!bar) return '<span>حرّك المؤشر فوق الشموع</span>';
+  return `<b>${esc(NY_STAMP.format(new Date(bar.time*1000)))}</b>
+    <span>O ${nf(bar.open,2)}</span><span>H ${nf(bar.high,2)}</span>
+    <span>L ${nf(bar.low,2)}</span><span>C ${nf(bar.close,2)}</span><span>V ${nf(bar.volume,0)}</span>`;
+}
+function renderStockChart(){
+  const box=$('stockChart'); if(!box||!STOCK) return;
+  destroyStockChart();
+  const rows=rangedChartBars(STOCK.bars), legend=$('chartLegend');
+  if(rows.length<2){ box.innerHTML='<div class="empty">لا توجد شموع كافية.</div>'; return; }
+  if(!window.LightweightCharts){ box.innerHTML=staticCandles(STOCK.bars); return; }
+  box.innerHTML='';
+  const css=getComputedStyle(document.documentElement), color=n=>css.getPropertyValue(n).trim();
+  const LC=window.LightweightCharts;
+  const chart=LC.createChart(box,{autoSize:true,height:340,attributionLogo:true,
+    layout:{background:{type:LC.ColorType.Solid,color:color('--card2')},textColor:color('--muted'),fontFamily:'IBM Plex Sans Arabic, sans-serif'},
+    grid:{vertLines:{color:color('--line')},horzLines:{color:color('--line')}},
+    crosshair:{mode:LC.CrosshairMode.Normal,vertLine:{color:color('--brand'),labelBackgroundColor:color('--brand')},
+      horzLine:{color:color('--brand'),labelBackgroundColor:color('--brand')}},
+    rightPriceScale:{borderColor:color('--line'),scaleMargins:{top:.08,bottom:.24}},
+    timeScale:{borderColor:color('--line'),timeVisible:true,secondsVisible:false,barSpacing:7,minBarSpacing:2,
+      tickMarkFormatter:time=>NY_STAMP.format(new Date(Number(time)*1000))},
+    handleScroll:{mouseWheel:true,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},
+    handleScale:{axisPressedMouseMove:true,mouseWheel:true,pinch:true},
+    localization:{priceFormatter:value=>'$'+nf(value,value<1?4:2),
+      timeFormatter:time=>NY_STAMP.format(new Date(Number(time)*1000))}});
+  STOCK_CHART=chart;
+  const candles=chart.addSeries(LC.CandlestickSeries,{upColor:color('--up'),downColor:color('--down'),
+    borderVisible:false,wickUpColor:color('--up'),wickDownColor:color('--down'),
+    priceFormat:{type:'price',precision:rows.at(-1).close<1?4:2,minMove:rows.at(-1).close<1?.0001:.01}});
+  const volumes=chart.addSeries(LC.HistogramSeries,{priceScaleId:'',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
+  volumes.priceScale().applyOptions({scaleMargins:{top:.82,bottom:0}});
+  candles.setData(rows.map(({time,open,high,low,close})=>({time,open,high,low,close})));
+  volumes.setData(rows.map(x=>({time:x.time,value:x.volume,color:x.close>=x.open?color('--up')+'66':color('--down')+'66'})));
+  const c=STOCK.candidate||{}, lines=[
+    [c.entry,color('--brand'),'الدخول'],[c.stop,color('--down'),'الوقف'],[c.target,color('--up'),'مرجع 2R'],
+  ];
+  const latestSession=NY_DATE.format(new Date(rows.at(-1).time*1000));
+  const prior=(STOCK.previous_closes||[]).find(x=>x.date<latestSession)||(STOCK.previous_closes||[])[0];
+  if(prior) lines.push([prior.close,color('--metal'),'الإغلاق السابق']);
+  lines.forEach(([price,lineColor,title])=>{ if(Number(price)>0) candles.createPriceLine({price:Number(price),color:lineColor,
+    lineWidth:1,lineStyle:LC.LineStyle.Dashed,axisLabelVisible:true,title}); });
+  legend.innerHTML=chartLegend(rows.at(-1));
+  chart.subscribeCrosshairMove(param=>{
+    if(!param.time){ legend.innerHTML=chartLegend(rows.at(-1)); return; }
+    const bar=param.seriesData.get(candles), volume=param.seriesData.get(volumes);
+    if(bar) legend.innerHTML=chartLegend({...bar,volume:volume?.value||0});
+  });
+  chart.timeScale().fitContent();
+}
+
 function renderStock(){
+  destroyStockChart();
   const s=STOCK||{}, c=s.candidate||{}, pos=s.position;
   const act=(c.decision||{}).action||'WATCH';
   $('stockBody').innerHTML=`
@@ -1384,11 +1492,11 @@ function renderStock(){
       </div>
       <div class="trio">
         <div><div class="label">سعر الدخول</div><div class="val sm num">${money(c.entry)}</div></div>
-        <div><div class="label">الهدف</div><div class="val sm num up">${money(c.target)}</div></div>
+        <div><div class="label">مرجع 2R</div><div class="val sm num up">${money(c.target)}</div></div>
         <div><div class="label">الوقف</div><div class="val sm num down">${money(c.stop)}</div></div>
       </div>
       <div class="order-bar">
-        <button class="btn primary" onclick="placePaperOrder()" ${s.simulation?'disabled':''}>إرسال أمر Paper</button>
+        <button class="btn primary" onclick="placePaperOrder()" ${s.simulation?'disabled':''}>إرسال Runner Paper</button>
         <button class="btn ghost" onclick="go('settingsPage')">إعدادات التنفيذ</button>
       </div>
       ${s.simulation?'<div class="sub" style="margin-top:8px">التنفيذ متاح بعد ربط حساب Alpaca Paper.</div>':''}
@@ -1401,8 +1509,13 @@ function renderStock(){
         <div><div class="label">الربح</div><div class="val sm num ${cls(pos.pnl)}">${money(pos.pnl)}</div></div>
       </div></div>`:''}
 
-    <div class="card"><div class="card-h"><div class="ic">CH</div><h3>حركة الجلسة</h3></div>
-      ${candles(s.bars)}</div>
+    <div class="card"><div class="card-h"><div class="ic">CH</div><h3>حركة السعر</h3>
+      <div class="chart-range"><button data-range="1D" class="${STOCK_CHART_RANGE==='1D'?'on':''}" onclick="changeStockChartRange('1D')">يوم</button>
+        <button data-range="5D" class="${STOCK_CHART_RANGE==='5D'?'on':''}" onclick="changeStockChartRange('5D')">5 أيام</button></div></div>
+      <div class="chart-legend num" id="chartLegend">—</div>
+      <div class="stock-chart-shell"><div class="stock-chart" id="stockChart"></div></div>
+      <div class="label" style="margin-top:12px">الإغلاقات السابقة</div>
+      <div class="previous-closes">${previousCloseCards(s.previous_closes)}</div></div>
 
     <div class="card"><div class="card-h"><div class="ic">AI</div><h3>مؤشر قوة الإشارة</h3>
       ${B(scoreBadge(c.intel_score))}</div>
@@ -1420,7 +1533,7 @@ function renderStock(){
     <div class="card"><div class="card-h"><div class="ic">LV</div><h3>المستويات الرئيسية</h3>
       <span class="badge ${act==='ARM'?'ok':'mute'}">${nf(c.risk_pct,2)}% مخاطرة</span></div>
       ${levelLadder(c)}
-      <div class="note">المسافة من السعر الحالي إلى كل مستوى. الوقف يحدد حجم الخسارة، والهدف يحدد العائد.</div>
+      <div class="note">الوقف يحد الخسارة. مرجع 2R يقيس جودة العائد فقط؛ لا يبيع البوت عنده تلقائياً، بل يراقب الامتداد ثم يخرج بعد انعكاس مؤكّد.</div>
     </div>
 
     <div class="card"><div class="card-h"><div class="ic">SC</div><h3>السيناريوهات المحتملة</h3></div>
@@ -1456,6 +1569,7 @@ function renderStock(){
 
     <div class="foot">تحليل آلي لأغراض المعلومات فقط — ليس توصية استثمارية.<br>
       الأداء السابق لا يضمن النتائج المستقبلية.</div>`;
+  requestAnimationFrame(renderStockChart);
 }
 
 /* ============================================================
@@ -1496,14 +1610,14 @@ async function testOptionAlpha(){
 }
 async function placePaperOrder(){
   const c=STOCK?.candidate||{};
-  if(!(c.symbol&&c.entry&&c.stop&&c.target)) return alert('لا تتوفر مستويات صالحة لإرسال الأمر.');
-  if(!confirm(`إرسال أمر Paper لـ ${c.symbol} عند ${money(c.entry)} بوقف ${money(c.stop)} وهدف ${money(c.target)}؟`)) return;
+  if(!(c.symbol&&c.entry&&c.stop)) return alert('لا تتوفر مستويات صالحة لإرسال الأمر.');
+  if(!confirm(`إرسال أمر Runner Paper لـ ${c.symbol} عند ${money(c.entry)} بوقف ${money(c.stop)}، دون هدف بيع ثابت؟`)) return;
   try{
     const r=await api('/api/paper/order',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({symbol:c.symbol,entry:Number(c.entry),stop:Number(c.stop),target:Number(c.target)})});
     const body=await r.json();
     if(!r.ok) throw new Error(body.detail||'تعذّر إرسال الأمر');
-    alert(`تم إرسال أمر Paper بكمية ${body.qty} سهم.`); await load();
+    alert(`تم إرسال أمر Runner Paper بكمية ${body.qty} سهم. مرجع 2R للقياس، والخروج الربحي بعد انعكاس مؤكّد.`); await load();
   }catch(e){ if(e.message!=='unauth') alert(e.message); }
 }
 async function load(){

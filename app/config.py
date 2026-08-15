@@ -73,6 +73,7 @@ class Settings:
     runner_activate_r: float = float(os.getenv("RUNNER_ACTIVATE_R", "2.0"))
     runner_giveback_fraction: float = float(os.getenv("RUNNER_GIVEBACK_FRACTION", "0.35"))
     runner_min_lock_r: float = float(os.getenv("RUNNER_MIN_LOCK_R", "1.0"))
+    runner_exit_checks: int = int(os.getenv("RUNNER_EXIT_CHECKS", "2"))
     protect_profit_after_r: float = float(os.getenv("PROTECT_PROFIT_AFTER_R", "1.0"))
     protected_floor_r: float = float(os.getenv("PROTECTED_FLOOR_R", "0.15"))
     max_hold_minutes: int = int(os.getenv("MAX_HOLD_MINUTES", "90"))

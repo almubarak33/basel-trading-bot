@@ -3,6 +3,7 @@ import asyncio
 import json
 import math
 from collections import Counter
+from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -11,11 +12,13 @@ from pydantic import BaseModel, Field
 from . import auth
 from .alpaca import alpaca
 from .config import settings
+from .chart_data import completed_session_closes
 from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
+from .session import NY
 from . import engine, simulation, trade_manager
-from .orders import build_bracket_order
+from .orders import build_runner_order
 from .optionalpha import trigger_webhook
 from .intelligence import enrich_candidate, market_brief
 from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
@@ -44,7 +47,7 @@ class OrderRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
     entry: float = Field(gt=0)
     stop: float = Field(gt=0)
-    target: float = Field(gt=0)
+    target: float | None = Field(default=None, gt=0)
 
 class LoginRequest(BaseModel):
     token: str = Field(min_length=1, max_length=512)
@@ -116,26 +119,39 @@ async def stock_detail(symbol: str):
             row=next((r for r in rows if r.get("symbol","").upper()==symbol),None)
             if row is None: raise HTTPException(404,"السهم غير موجود في المحاكاة")
             base=float(row.get("price") or 1)
-            bars=[]
-            for i in range(78):
-                wave=math.sin(i/7)*0.012 + math.sin(i/17)*0.008
-                trend=(i-45)*0.0007
-                close=base*(1+wave+trend)
-                open_=close*(1-0.003*math.sin(i))
-                high=max(open_,close)*1.004
-                low=min(open_,close)*0.996
-                bars.append({"t":i,"o":round(open_,4),"h":round(high,4),"l":round(low,4),"c":round(close,4),"v":int(25000+15000*abs(math.sin(i/5)))})
-            return {"simulation":True,"symbol":symbol,"candidate":row,"bars":bars,"news":[],"position":None}
+            bars=[]; daily=[]
+            session_day=datetime.now(NY).replace(hour=9,minute=30,second=0,microsecond=0)
+            days=[]
+            while len(days)<5:
+                if session_day.weekday()<5: days.append(session_day)
+                session_day-=timedelta(days=1)
+            for day_index,session_start in enumerate(reversed(days)):
+                day_bars=[]
+                for i in range(78):
+                    wave=math.sin((i+day_index*5)/7)*0.012 + math.sin(i/17)*0.008
+                    trend=(i-45)*0.0007 + (day_index-4)*0.004
+                    close=base*(1+wave+trend)
+                    open_=close*(1-0.003*math.sin(i))
+                    high=max(open_,close)*1.004; low=min(open_,close)*0.996
+                    bar={"t":(session_start+timedelta(minutes=i*5)).isoformat(),
+                         "o":round(open_,4),"h":round(high,4),"l":round(low,4),"c":round(close,4),
+                         "v":int(25000+15000*abs(math.sin(i/5)))}
+                    bars.append(bar); day_bars.append(bar)
+                daily.append({"t":session_start.isoformat(),"c":day_bars[-1]["c"]})
+            return {"simulation":True,"symbol":symbol,"candidate":row,"bars":bars,
+                    "previous_closes":completed_session_closes(daily),"news":[],"position":None}
 
         rows=await scan()
         enriched=[enrich_candidate(r) for r in rows]
         row=next((r for r in enriched if r.get("symbol","").upper()==symbol),None)
-        bars_map=await alpaca.intraday_bars([symbol],minutes=390)
+        bars_map=await alpaca.intraday_bars([symbol],minutes=8*24*60)
+        daily_map=await alpaca.daily_bars([symbol],days=15)
         news_map=await alpaca.news([symbol],hours=48,limit=20)
         position=None
         try: position=await alpaca.position(symbol)
         except Exception: pass
         return {"simulation":False,"symbol":symbol,"candidate":row,"bars":bars_map.get(symbol,[]),
+                "previous_closes":completed_session_closes(daily_map.get(symbol,[])),
                 "news":news_map.get(symbol,[])[:10],"position":position}
     except HTTPException: raise
     except Exception as e: raise HTTPException(502,f"تعذر تحميل بيانات السهم: {e}")
@@ -216,10 +232,13 @@ async def paper_order(req:OrderRequest):
     risk=await alpaca.risk_status()
     if risk.get("blocked"): raise HTTPException(423,"تم بلوغ حد الخسارة اليومية")
     if req.stop>=req.entry: raise HTTPException(400,"وقف الخسارة يجب أن يكون تحت الدخول")
-    if req.target<=req.entry: raise HTTPException(400,"الهدف يجب أن يكون فوق الدخول")
     account=await alpaca.account(); positions=await alpaca.positions()
     if len(positions)>=settings.max_open_positions: raise HTTPException(409,"تم بلوغ الحد الأقصى للصفقات المفتوحة")
     equity=float(account.get("equity",settings.paper_equity)); qty=position_size(equity,req.entry,req.stop)
     if qty<1: raise HTTPException(400,"حجم الصفقة المحسوب صفر")
-    payload=build_bracket_order(req.symbol,qty,req.entry,req.stop,req.target,source="manual")
-    result=await alpaca.submit_order(payload); log_event("paper_order",req.symbol.upper(),json.dumps(result)); return {"qty":qty,"order":result}
+    payload=build_runner_order(req.symbol,qty,req.entry,req.stop,source="manual")
+    result=await alpaca.submit_order(payload)
+    log_event("paper_order",req.symbol.upper(),json.dumps({
+        "result":result,"runner_mode":True,"target_reference":req.target,
+    }))
+    return {"qty":qty,"order":result,"runner_mode":True,"target_reference":req.target}

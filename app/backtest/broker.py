@@ -15,6 +15,7 @@ class PendingOrder:
     target: float
     qty: int
     placed_at: datetime
+    fixed_target: bool = True
     meta: dict = field(default_factory=dict)
     bars_waited: int = 0
 
@@ -109,7 +110,7 @@ class SimulatedBroker:
             risk = max(fill - order.stop, 0.01)
             self.positions[symbol] = OpenPosition(
                 symbol=symbol, entry_price=fill, qty=order.qty, stop=order.stop, target=order.target,
-                entry_time=now, meta=order.meta,
+                entry_time=now, meta={**order.meta, "fixed_target": order.fixed_target},
                 state=PositionState(symbol=symbol, entry=fill, first_seen=now, high=fill,
                                     initial_risk_per_share=risk if use_true_initial_risk else None),
             )
@@ -126,7 +127,7 @@ class SimulatedBroker:
         open_price = float(bar.get("o") or 0)
 
         stop_hit = low > 0 and low <= position.stop
-        target_hit = high > 0 and high >= position.target
+        target_hit = bool(position.meta.get("fixed_target", True)) and high > 0 and high >= position.target
 
         if stop_hit and (not target_hit or self.execution.same_bar_stop_first):
             # Stops become market orders: a gap-down fills at the open, and even a

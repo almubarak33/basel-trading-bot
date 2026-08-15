@@ -89,14 +89,10 @@ def test_two_payloads_for_one_symbol_differ_only_by_id():
 
 
 def test_each_path_uses_its_intended_builder():
-    """The autonomous engine submits runner orders; the manual endpoint brackets.
-
-    They diverged on purpose — runner mode manages the upside itself — so this
-    pins which builder each path uses rather than asserting they match.
-    """
+    """Both order paths leave the upside uncapped for the position manager."""
     from app import engine, main
     assert engine.build_runner_order is build_runner_order
-    assert main.build_bracket_order is build_bracket_order
+    assert main.build_runner_order is build_runner_order
 
 
 def test_a_runner_order_carries_a_stop_but_no_take_profit():

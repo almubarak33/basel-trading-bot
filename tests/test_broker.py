@@ -14,8 +14,9 @@ def broker(**kwargs):
     return SimulatedBroker(20_000.0, ExecutionModel(**kwargs))
 
 
-def order(limit=10.0, stop=9.8, target=10.4, qty=100):
-    return PendingOrder(symbol="AAAA", limit=limit, stop=stop, target=target, qty=qty, placed_at=NOW)
+def order(limit=10.0, stop=9.8, target=10.4, qty=100, fixed_target=True):
+    return PendingOrder(symbol="AAAA", limit=limit, stop=stop, target=target, qty=qty,
+                        placed_at=NOW, fixed_target=fixed_target)
 
 
 def test_limit_order_fills_when_the_bar_trades_down_to_it():
@@ -56,6 +57,14 @@ def test_target_exit_books_the_limit_price():
     b.process_bar("AAAA", bar(10.0, 10.0, 9.9, 10.0), NOW, False)
     trade = b.process_bar("AAAA", bar(10.1, 10.5, 10.05, 10.45), NOW + timedelta(minutes=1), False)
     assert trade.reason == "take_profit" and trade.exit_price == 10.4
+
+
+def test_runner_order_does_not_exit_at_the_2r_reference():
+    b = broker(); b.place(order(fixed_target=False))
+    b.process_bar("AAAA", bar(10.0, 10.0, 9.9, 10.0), NOW, False)
+    trade = b.process_bar("AAAA", bar(10.1, 10.8, 10.05, 10.7), NOW + timedelta(minutes=1), False)
+    assert trade is None
+    assert "AAAA" in b.positions
 
 
 def test_stop_exit_pays_slippage():

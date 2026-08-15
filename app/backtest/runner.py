@@ -230,6 +230,7 @@ def _submit(broker: SimulatedBroker, candidate: dict, equity: float, moment: dat
     if qty<1:return False
     profile=candidate.get("strategy_profile") or {}
     broker.place(PendingOrder(symbol=symbol,limit=entry,stop=stop,target=target,qty=qty,placed_at=moment,
+        fixed_target=not cfg_settings.runner_mode,
         meta={"score":candidate.get("score"),"intel_score":candidate.get("intel_score"),"grade":candidate.get("grade"),
               "rvol":candidate.get("rvol"),"change_pct":candidate.get("change_pct"),"risk_pct":round(risk_pct,2),
               "entry_hour":moment.astimezone(NY).hour,"strategy_family":profile.get("family") or "UNKNOWN",

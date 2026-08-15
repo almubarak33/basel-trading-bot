@@ -73,8 +73,12 @@ These are choices, not measurements. Read results with them in mind:
   sub-minute price paths are invisible.
 - **No bar both opens and closes a trade.** Positions are managed from the bar
   after the fill.
-- **Stop before target** when one bar spans both, which is the conservative read.
-- **Stops pay slippage** (`stop_slippage_bps`); limit exits do not.
+- **Runner mode has no fixed target.** The candidate's 2R value stays in the
+  report as a reference, while replay exits use the same confirmed-reversal
+  manager as Paper execution. Legacy `RUNNER_MODE=false` runs still use a fixed
+  target, with the stop winning when one bar spans both.
+- **Stops pay slippage** (`stop_slippage_bps`); manager exits use the observed
+  bar price and legacy target limits do not.
 - **The screener is reconstructed** from your supplied universe by ranking on
   intraday change and cumulative volume. Alpaca's live movers endpoint has no
   historical equivalent, so this approximates *which* symbols the bot would have
