@@ -79,6 +79,9 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: |
+          # Without pipefail the pipeline's status is tee's, so a crashed
+          # backtest reported success and published an empty report.
+          set -o pipefail
           mkdir -p results
           # Assemble overrides from the toggles so an A/B test never depends on
           # typing a command string correctly into a phone keyboard.

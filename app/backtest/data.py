@@ -4,6 +4,7 @@ Bars keep Alpaca's wire shape ({"t","o","h","l","c","v"}) so they can be handed
 straight to the production strategy code without translation.
 """
 from __future__ import annotations
+import asyncio
 import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -95,6 +96,39 @@ class BarStore:
         return store
 
 
+RETRY_STATUS = {429, 500, 502, 503, 504}
+MAX_RETRIES = 6
+BACKOFF_BASE_SECONDS = 2.0
+
+
+async def _get_with_retry(client: httpx.AsyncClient, query: dict, sleep=None) -> httpx.Response:
+    """One bars request, retried through rate limiting.
+
+    Six months of minute bars for 150 symbols is thousands of pages, and the
+    free data tier rate-limits well before that finishes — two runs launched
+    minutes apart share the same window, so the second one dies partway. A 429
+    is a "wait", not a failure, and Alpaca sends Retry-After when it knows how
+    long.
+    """
+    sleep = sleep or asyncio.sleep
+    for attempt in range(MAX_RETRIES):
+        response = await client.get(f"{DATA_URL}/v2/stocks/bars", params=query)
+        if response.status_code not in RETRY_STATUS:
+            response.raise_for_status()
+            return response
+        if attempt == MAX_RETRIES - 1:
+            response.raise_for_status()
+        delay = BACKOFF_BASE_SECONDS * (2 ** attempt)
+        try:
+            delay = max(delay, float(response.headers.get("retry-after") or 0))
+        except (TypeError, ValueError):
+            pass
+        print(f"  … {response.status_code} from the data API, waiting {delay:.0f}s "
+              f"(attempt {attempt + 1}/{MAX_RETRIES})", flush=True)
+        await sleep(delay)
+    raise RuntimeError("unreachable: the final attempt always raises or returns")
+
+
 async def _fetch_paginated(client: httpx.AsyncClient, params: dict) -> dict[str, list[dict]]:
     """Alpaca caps each bars response, so follow next_page_token to completion."""
     collected: dict[str, list[dict]] = defaultdict(list)
@@ -103,8 +137,7 @@ async def _fetch_paginated(client: httpx.AsyncClient, params: dict) -> dict[str,
         query = dict(params)
         if page_token:
             query["page_token"] = page_token
-        response = await client.get(f"{DATA_URL}/v2/stocks/bars", params=query)
-        response.raise_for_status()
+        response = await _get_with_retry(client, query)
         payload = response.json()
         for symbol, bars in (payload.get("bars") or {}).items():
             collected[symbol].extend(bars)
