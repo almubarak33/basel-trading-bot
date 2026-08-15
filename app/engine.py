@@ -8,7 +8,8 @@ from .config import settings
 from .db import log_event
 from .orders import build_extended_hours_entry, build_runner_order
 from .scanner import scan
-from .session import NY, minutes_until_day_end, opening_delay_active, tradeable_now
+from .session import (NY, extended_scan_active, minutes_until_day_end,
+                      opening_delay_active, tradeable_now)
 from . import soft_stops
 from .strategy import position_size
 from .intelligence import enrich_candidate
@@ -18,6 +19,10 @@ LAST_SCAN = None
 LAST_ERROR = None
 LAST_CANDIDATE = None
 LAST_RISK_STATUS = None
+LAST_SCAN_COUNT = 0
+LAST_ACTIONABLE_COUNT = 0
+LAST_REJECT_COUNTS: dict[str,int] = {}
+LAST_SCAN_SESSION = None
 ARMED = ArmingTracker(lambda kind, symbol, payload: log_event(kind, symbol, json.dumps(payload)))
 COOLDOWNS: dict[str, datetime] = {}
 # لماذا لم يدخل المحرك صفقة في آخر دورة. كل بوابة كانت تخرج بصمت، فيبدو
@@ -33,9 +38,11 @@ def set_auto(enabled: bool):
 def state():
     return {"auto_enabled":AUTO_ENABLED,"idle_reason":IDLE_REASON,"last_scan":LAST_SCAN,"last_error":LAST_ERROR,
         "last_candidate":LAST_CANDIDATE,"last_risk_status":LAST_RISK_STATUS,
+        "last_scan_count":LAST_SCAN_COUNT,"last_actionable_count":LAST_ACTIONABLE_COUNT,
+        "last_reject_counts":LAST_REJECT_COUNTS,"last_scan_session":LAST_SCAN_SESSION,
         "interval_seconds":settings.scan_interval_seconds,"armed_symbols":ARMED.symbols(),
         "cooldown_symbols":list(COOLDOWNS.keys()),
-        "entry_model":"INTELLIGENCE_ARM + PULLBACK_RECLAIM_2_STAGE + RUNNER_EXIT"}
+        "entry_model":"AGGRESSIVE_INTELLIGENCE + BREAKOUT_OR_RECLAIM + 2_STAGE + RUNNER_EXIT"}
 
 def _opening_delay_active() -> bool:
     return opening_delay_active(datetime.now(NY), settings.opening_delay_minutes)
@@ -56,6 +63,27 @@ def _cooldown_active(symbol: str) -> bool:
         COOLDOWNS.pop(symbol,None); return False
     return True
 
+
+async def _refresh_candidates(session_name: str) -> tuple[list[dict],list[dict]]:
+    global LAST_SCAN,LAST_CANDIDATE,LAST_SCAN_COUNT,LAST_ACTIONABLE_COUNT,LAST_REJECT_COUNTS,LAST_SCAN_SESSION
+    raw_rows=await scan(); rows=[enrich_candidate(r) for r in raw_rows]
+    LAST_SCAN=datetime.now(timezone.utc).isoformat(); LAST_SCAN_SESSION=session_name
+    eligible=[r for r in rows if r.get("eligible") and r.get("decision",{}).get("action")=="ARM"]
+    eligible.sort(key=lambda r:(r.get("intel_score",0),r.get("score",0),r.get("rvol",0)),reverse=True)
+    LAST_CANDIDATE=eligible[0] if eligible else (rows[0] if rows else None)
+    LAST_SCAN_COUNT=len(rows); LAST_ACTIONABLE_COUNT=len(eligible)
+    reject_counts: dict[str,int]={}
+    for row in rows:
+        for item in row.get("reject_codes") or []:
+            code=item.get("code") if isinstance(item,dict) else str(item)
+            reject_counts[code]=reject_counts.get(code,0)+1
+    LAST_REJECT_COUNTS=dict(sorted(reject_counts.items(),key=lambda item:item[1],reverse=True)[:8])
+    log_event("auto_scan" if session_name=="REGULAR" else "extended_scan",None,json.dumps({
+        "profile":settings.trading_profile,"session":session_name,"discovered":len(rows),
+        "actionable":len(eligible),"top_rejects":LAST_REJECT_COUNTS,
+    }))
+    return rows,eligible
+
 async def auto_loop():
     global LAST_SCAN,LAST_ERROR,LAST_CANDIDATE,LAST_RISK_STATUS,AUTO_ENABLED,IDLE_REASON
     while not STOP_REQUESTED:
@@ -65,8 +93,15 @@ async def auto_loop():
             elif not alpaca.configured(): IDLE_REASON="not_configured"
             if AUTO_ENABLED and settings.paper and alpaca.configured():
                 clock=await alpaca.clock()
+                market_open=bool(clock.get("is_open",False))
                 open_now=_session_open(clock)
-                if not open_now: IDLE_REASON="market_closed"
+                if not open_now:
+                    # نراقب في نافذة أوسع مما نتداول فيه: المتابعة مجانية والتنفيذ ليس كذلك
+                    if settings.scan_extended_hours and extended_scan_active(datetime.now(NY)):
+                        await _refresh_candidates("EXTENDED")
+                        ARMED.clear(); IDLE_REASON="extended_hours_watch"
+                    else:
+                        IDLE_REASON="market_closed"
                 if open_now:
                     LAST_RISK_STATUS=await alpaca.risk_status()
                     if LAST_RISK_STATUS.get("blocked"):
@@ -78,19 +113,14 @@ async def auto_loop():
                     elif _entry_window_closed(clock):
                         IDLE_REASON="entry_window_closed"; ARMED.clear()
                     else:
-                        raw_rows=await scan(); rows=[enrich_candidate(r) for r in raw_rows]
-                        LAST_SCAN=datetime.now(timezone.utc).isoformat()
-                        eligible=[r for r in rows if r.get("eligible") and r.get("decision",{}).get("action")=="ARM"]
-                        eligible.sort(key=lambda r:(r.get("intel_score",0),r.get("score",0),r.get("rvol",0)),reverse=True)
-                        LAST_CANDIDATE=eligible[0] if eligible else None
-                        log_event("auto_scan",None,json.dumps({"intel_arm_candidates":len(eligible)}))
+                        rows,eligible=await _refresh_candidates("REGULAR" if market_open else "EXTENDED")
                         ARMED.retain_only({r["symbol"].upper() for r in eligible},"intel_or_setup_failed_recheck")
                         if not eligible: IDLE_REASON="no_arm_candidates"
                         elif not settings.enable_orders: IDLE_REASON="orders_disabled"
                         elif not ARMED.symbols(): IDLE_REASON="awaiting_confirmation"
                         else: IDLE_REASON="working"
                         if settings.enable_orders:
-                            for candidate in eligible[:3]:
+                            for candidate in eligible[:5]:
                                 symbol=candidate["symbol"].upper()
                                 if _cooldown_active(symbol):continue
                                 if ARMED.arm_or_confirm(candidate):

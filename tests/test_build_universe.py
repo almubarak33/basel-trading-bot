@@ -28,6 +28,11 @@ def test_a_symbol_above_the_price_band_is_rejected():
     assert qualifies(bars, 2, 30, 5_000_000, 5) is False
 
 
+def test_zero_max_price_means_no_upper_cap():
+    bars = [bar(500.0, 100_000)] * 10
+    assert qualifies(bars, 0.01, 0, 5_000_000, 5) is True
+
+
 def test_liquidity_is_measured_in_dollars_not_shares():
     """A million shares of a $2 stock is not a million shares of a $30 stock."""
     cheap = [bar(2.0, 1_000_000)] * 10         # $2M/day — too thin

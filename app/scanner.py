@@ -50,9 +50,16 @@ def assemble_candidates(symbols: list[str], change_map: dict[str, float], rank_m
         })
         row["strategy_profile"] = classify_strategy(row)
         if row["eligible"] and not regime.get("longs_allowed", False):
-            row["eligible"] = False
-            row["reject_reasons"].append(render("regime_block"))
-            row["reject_codes"].append({"code": "regime_block"})
+            observed_regime = any(
+                isinstance(detail, dict) and detail.get("price")
+                for detail in (regime.get("details") or {}).values()
+            )
+            if settings.trading_profile == "AGGRESSIVE" and observed_regime:
+                row["market_regime_caution"] = True
+            else:
+                row["eligible"] = False
+                row["reject_reasons"].append(render("regime_block"))
+                row["reject_codes"].append({"code": "regime_block"})
         output.append(row)
     output.sort(key=lambda x: (x["eligible"], x["score"], x.get("rvol", 0), -abs(x["vwap_extension_pct"])), reverse=True)
     return output
@@ -71,8 +78,8 @@ def change_pct_from_snapshot(snapshot: dict) -> float:
 
 async def scan():
     regime = await alpaca.market_regime()
-    movers = await alpaca.movers(settings.screener_top)
-    actives = await alpaca.most_actives(settings.screener_top)
+    movers = await alpaca.movers(settings.movers_top)
+    actives = await alpaca.most_actives(settings.actives_top)
     gainers = movers.get("gainers", [])
     active_rows = actives.get("most_actives", actives.get("mostActives", []))
     active_rank = {row.get("symbol"): i for i, row in enumerate(active_rows, 1) if row.get("symbol")}
@@ -87,7 +94,7 @@ async def scan():
         s=row.get("symbol")
         if s and s not in symbols:
             symbols.append(s); active_only.append(s)
-    symbols=symbols[:max(settings.screener_top,25)]
+    symbols=symbols[:max(1,settings.screener_universe_limit)]
 
     snapshots=await alpaca.snapshots(symbols)
     snapmap=snapshots.get("snapshots",snapshots)

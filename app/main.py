@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
@@ -15,12 +16,13 @@ from .db import init_db, log_event, recent_events
 from .scanner import scan
 from .strategy import position_size
 from . import engine, simulation, trade_manager
-from .orders import build_bracket_order
+from .orders import build_runner_order
 from .optionalpha import trigger_webhook
 from .intelligence import enrich_candidate, market_brief
 from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
 from .portfolio import dashboard_portfolio
 from .session import NY, in_after_hours, in_pre_market, tradeable_now
+from .stock_service import stock_chart, stock_core, stock_details, stock_fundamentals
 
 app = FastAPI(title="Basel Trader Mobile", version="1.1.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
@@ -35,11 +37,25 @@ def session_phase(market_open: bool, now) -> str:
     if in_pre_market(now): return "pre_market"
     return "closed"
 
+
+def scanner_profile() -> dict:
+    return {
+        "profile":settings.trading_profile,"price_min":settings.min_price,
+        "price_max":settings.max_price if settings.max_price>0 else None,
+        "change_min_pct":settings.min_change_pct,
+        "execution_change_min_pct":settings.min_execution_change_pct,
+        "change_max_pct":settings.max_change_pct if settings.max_change_pct>0 else None,
+        "min_score":settings.min_score,"min_intel_score":settings.min_intel_score,
+        "min_rvol":settings.min_rvol,"universe_limit":settings.screener_universe_limit,
+        "movers_top":settings.movers_top,"actives_top":settings.actives_top,
+        "extended_hours":settings.scan_extended_hours,
+    }
+
 class OrderRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
     entry: float = Field(gt=0)
     stop: float = Field(gt=0)
-    target: float = Field(gt=0)
+    target: float | None = Field(default=None, gt=0)
 
 class LoginRequest(BaseModel):
     token: str = Field(min_length=1, max_length=512)
@@ -62,13 +78,15 @@ async def status():
             "risk_per_trade_pct":settings.risk_per_trade*100,"max_daily_loss_pct":settings.max_daily_loss*100,
             "min_score":settings.min_score,"min_rvol":settings.min_rvol,"opening_delay_minutes":settings.opening_delay_minutes,
             "engine":engine.state(),"trade_manager":trade_manager.state(),
-            "risk_status":{"blocked":False,"drawdown_pct":0.0,"simulation":True}})
+            "risk_status":{"blocked":False,"drawdown_pct":0.0,"simulation":True},
+            "scanner_profile":scanner_profile()})
         return sim
     base={"mode":"PAPER" if settings.paper else "BLOCKED","orders_enabled":settings.enable_orders,"configured":True,
         "option_alpha_configured":bool(settings.option_alpha_webhook_url),"option_alpha_enabled":settings.option_alpha_enabled,
         "kill_switch":KILL_SWITCH,"risk_per_trade_pct":settings.risk_per_trade*100,
         "max_daily_loss_pct":settings.max_daily_loss*100,"min_score":settings.min_score,"min_rvol":settings.min_rvol,
-        "opening_delay_minutes":settings.opening_delay_minutes,"engine":engine.state(),"trade_manager":trade_manager.state()}
+        "opening_delay_minutes":settings.opening_delay_minutes,"engine":engine.state(),"trade_manager":trade_manager.state(),
+        "scanner_profile":scanner_profile()}
     try:
         account=await alpaca.account(); clock=await alpaca.clock(); risk=await alpaca.risk_status(); regime=await alpaca.market_regime()
         market_open=bool(clock.get("is_open",False)); now=datetime.now(NY)
@@ -89,9 +107,14 @@ async def pro_dashboard():
         enriched=[enrich_candidate(r) for r in rows]
         enriched.sort(key=lambda r:(r.get("decision",{}).get("action")=="ARM",r.get("intel_score",0)),reverse=True)
         portfolio=await dashboard_portfolio(simulation=is_sim)
+        actions=Counter((r.get("decision") or {}).get("action","UNKNOWN") for r in enriched)
+        rejects=Counter(item.get("code","unknown") for r in enriched for item in (r.get("reject_codes") or []))
+        diagnostics={"discovered":len(enriched),"actions":dict(actions),
+            "top_rejections":dict(rejects.most_common(8)),"profile":scanner_profile()}
         return {"simulation":is_sim,"status":s,"portfolio":portfolio,"market_brief":market_brief(s),
             "radar":enriched,"top_signal":enriched[0] if enriched else None,
             "events":recent_events(30),
+            "scanner_diagnostics":diagnostics,
             "modules":{"smart_radar":True,"smart_map":True,"risk_engine":True,"market_regime":True,
                 "catalyst_feed":True,"microstructure":True,"strategy_selector":True,"insider_sec":False,
                 "paper_execution":alpaca.configured(),"autonomous_entry":True,"autonomous_exit":True}}
@@ -101,36 +124,37 @@ async def pro_dashboard():
 async def stock_detail(symbol: str):
     symbol=symbol.upper().strip()
     if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
-    is_sim=not alpaca.configured()
     try:
-        if is_sim:
-            rows=[enrich_candidate(r) for r in simulation.scan()]
-            row=next((r for r in rows if r.get("symbol","").upper()==symbol),None)
-            if row is None: raise HTTPException(404,"السهم غير موجود في المحاكاة")
-            base=float(row.get("price") or 1)
-            bars=[]
-            for i in range(78):
-                wave=math.sin(i/7)*0.012 + math.sin(i/17)*0.008
-                trend=(i-45)*0.0007
-                close=base*(1+wave+trend)
-                open_=close*(1-0.003*math.sin(i))
-                high=max(open_,close)*1.004
-                low=min(open_,close)*0.996
-                bars.append({"t":i,"o":round(open_,4),"h":round(high,4),"l":round(low,4),"c":round(close,4),"v":int(25000+15000*abs(math.sin(i/5)))})
-            return {"simulation":True,"symbol":symbol,"candidate":row,"bars":bars,"news":[],"position":None}
-
-        rows=await scan()
-        enriched=[enrich_candidate(r) for r in rows]
-        row=next((r for r in enriched if r.get("symbol","").upper()==symbol),None)
-        bars_map=await alpaca.intraday_bars([symbol],minutes=390)
-        news_map=await alpaca.news([symbol],hours=48,limit=20)
-        position=None
-        try: position=await alpaca.position(symbol)
-        except Exception: pass
-        return {"simulation":False,"symbol":symbol,"candidate":row,"bars":bars_map.get(symbol,[]),
-                "news":news_map.get(symbol,[])[:10],"position":position}
+        return await stock_core(symbol)
+    except LookupError: raise HTTPException(404,"لا تتوفر بيانات لهذا السهم")
     except HTTPException: raise
     except Exception as e: raise HTTPException(502,f"تعذر تحميل بيانات السهم: {e}")
+
+@app.get("/api/stock/{symbol}/chart", dependencies=protected)
+async def stock_chart_data(symbol: str, timeframe: str = "1Min"):
+    symbol=symbol.upper().strip()
+    if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
+    try: return await stock_chart(symbol,timeframe)
+    except ValueError: raise HTTPException(400,"الإطار الزمني غير مدعوم")
+    except Exception as e: raise HTTPException(502,f"تعذر تحميل الشارت: {e}")
+
+@app.get("/api/stock/{symbol}/details", dependencies=protected)
+async def stock_detail_data(symbol: str):
+    symbol=symbol.upper().strip()
+    if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
+    try:
+        payload=dict(await stock_details(symbol))
+        payload["bot_events"]=[event for event in recent_events(250)
+                               if str(event.get("symbol") or "").upper()==symbol][:15]
+        return payload
+    except Exception as e: raise HTTPException(502,f"تعذر تحميل تفاصيل السهم: {e}")
+
+@app.get("/api/stock/{symbol}/fundamentals", dependencies=protected)
+async def stock_fundamental_data(symbol: str):
+    symbol=symbol.upper().strip()
+    if not symbol or len(symbol)>10: raise HTTPException(400,"رمز السهم غير صالح")
+    try: return await stock_fundamentals(symbol)
+    except Exception as e: raise HTTPException(502,f"تعذر تحميل بيانات الشركة: {e}")
 
 @app.get("/api/portfolio", dependencies=protected)
 async def portfolio(): return await dashboard_portfolio(simulation=not alpaca.configured())
@@ -208,10 +232,13 @@ async def paper_order(req:OrderRequest):
     risk=await alpaca.risk_status()
     if risk.get("blocked"): raise HTTPException(423,"تم بلوغ حد الخسارة اليومية")
     if req.stop>=req.entry: raise HTTPException(400,"وقف الخسارة يجب أن يكون تحت الدخول")
-    if req.target<=req.entry: raise HTTPException(400,"الهدف يجب أن يكون فوق الدخول")
     account=await alpaca.account(); positions=await alpaca.positions()
     if len(positions)>=settings.max_open_positions: raise HTTPException(409,"تم بلوغ الحد الأقصى للصفقات المفتوحة")
     equity=float(account.get("equity",settings.paper_equity)); qty=position_size(equity,req.entry,req.stop)
     if qty<1: raise HTTPException(400,"حجم الصفقة المحسوب صفر")
-    payload=build_bracket_order(req.symbol,qty,req.entry,req.stop,req.target,source="manual")
-    result=await alpaca.submit_order(payload); log_event("paper_order",req.symbol.upper(),json.dumps(result)); return {"qty":qty,"order":result}
+    payload=build_runner_order(req.symbol,qty,req.entry,req.stop,source="manual")
+    result=await alpaca.submit_order(payload)
+    log_event("paper_order",req.symbol.upper(),json.dumps({
+        "result":result,"runner_mode":True,"target_reference":req.target,
+    }))
+    return {"qty":qty,"order":result,"runner_mode":True,"target_reference":req.target}

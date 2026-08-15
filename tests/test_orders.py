@@ -68,6 +68,13 @@ def test_prices_are_rounded_to_cents_as_strings():
     assert payload["take_profit"]["limit_price"] == "11.02"
 
 
+def test_sub_dollar_prices_keep_four_decimal_precision():
+    payload = order(entry=0.45678, stop=0.43219, target=0.50555)
+    assert payload["limit_price"] == "0.4568"
+    assert payload["stop_loss"]["stop_price"] == "0.4322"
+    assert payload["take_profit"]["limit_price"] == "0.5056"
+
+
 def test_both_protective_legs_are_attached():
     payload = order()
     assert payload["take_profit"]["limit_price"] == "11.0"
@@ -82,14 +89,10 @@ def test_two_payloads_for_one_symbol_differ_only_by_id():
 
 
 def test_each_path_uses_its_intended_builder():
-    """The autonomous engine submits runner orders; the manual endpoint brackets.
-
-    They diverged on purpose — runner mode manages the upside itself — so this
-    pins which builder each path uses rather than asserting they match.
-    """
+    """Both order paths leave the upside uncapped for the position manager."""
     from app import engine, main
     assert engine.build_runner_order is build_runner_order
-    assert main.build_bracket_order is build_bracket_order
+    assert main.build_runner_order is build_runner_order
 
 
 def test_a_runner_order_carries_a_stop_but_no_take_profit():

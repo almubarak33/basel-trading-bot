@@ -39,6 +39,16 @@ def opening_delay_active(now: datetime, minutes: int) -> bool:
     return open_dt <= now < open_dt + timedelta(minutes=minutes)
 
 
+def extended_scan_active(now: datetime) -> bool:
+    """Premarket and after-hours discovery window.
+
+    Wider than the window the bot may execute in — see `tradeable_now` — because
+    watching a symbol costs nothing while trading it after the bell does.
+    """
+    now = now.astimezone(NY)
+    return now.weekday() < 5 and PRE_MARKET_OPEN <= now.time() < AFTER_HOURS_CLOSE
+
+
 def minutes_until_close(now: datetime) -> float:
     """Minutes left in a standard 16:00 session; negative once it has passed.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import secrets
 from datetime import datetime, timezone
+from .pricing import price_string
 
 MAX_CLIENT_ORDER_ID = 128
 _UNSAFE = re.compile(r"[^a-z0-9]+")
@@ -22,9 +23,9 @@ def build_bracket_order(symbol: str, qty: int, entry: float, stop: float, target
     """Legacy fixed-target bracket order, still available for manual experiments."""
     return {
         "symbol": symbol.upper(), "qty": str(qty), "side": "buy", "type": "limit",
-        "time_in_force": "day", "limit_price": str(round(entry, 2)), "order_class": "bracket",
-        "take_profit": {"limit_price": str(round(target, 2))},
-        "stop_loss": {"stop_price": str(round(stop, 2))},
+        "time_in_force": "day", "limit_price": price_string(entry), "order_class": "bracket",
+        "take_profit": {"limit_price": price_string(target)},
+        "stop_loss": {"stop_price": price_string(stop)},
         "client_order_id": build_client_order_id(symbol, source),
     }
 
@@ -38,8 +39,8 @@ def build_runner_order(symbol: str, qty: int, entry: float, stop: float, source:
     """
     return {
         "symbol": symbol.upper(), "qty": str(qty), "side": "buy", "type": "limit",
-        "time_in_force": "day", "limit_price": str(round(entry, 2)), "order_class": "oto",
-        "stop_loss": {"stop_price": str(round(stop, 2))},
+        "time_in_force": "day", "limit_price": price_string(entry), "order_class": "oto",
+        "stop_loss": {"stop_price": price_string(stop)},
         "client_order_id": build_client_order_id(symbol, source),
     }
 
@@ -54,7 +55,7 @@ def build_extended_hours_entry(symbol: str, qty: int, entry: float, source: str)
     """
     return {
         "symbol": symbol.upper(), "qty": str(qty), "side": "buy", "type": "limit",
-        "time_in_force": "day", "limit_price": str(round(entry, 2)),
+        "time_in_force": "day", "limit_price": price_string(entry),
         "extended_hours": True,
         "client_order_id": build_client_order_id(symbol, source),
     }
@@ -67,10 +68,10 @@ def build_extended_hours_exit(symbol: str, qty: int, price: float, source: str =
     session, so an extended-hours exit has to be priced. The limit sits below the
     last price by `EXTENDED_MARKETABLE_PCT` to cross a wide after-hours spread.
     """
-    limit = max(round(price * (1 - EXTENDED_MARKETABLE_PCT), 2), 0.01)
+    limit = max(price * (1 - EXTENDED_MARKETABLE_PCT), 0.0001)
     return {
         "symbol": symbol.upper(), "qty": str(qty), "side": "sell", "type": "limit",
-        "time_in_force": "day", "limit_price": str(limit),
+        "time_in_force": "day", "limit_price": price_string(limit),
         "extended_hours": True,
         "client_order_id": build_client_order_id(symbol, source),
     }

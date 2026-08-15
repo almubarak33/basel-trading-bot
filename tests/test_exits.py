@@ -11,6 +11,11 @@ class Cfg:
     protected_floor_r: float = 0.15
     max_hold_minutes: int = 90
     regime_exit_enabled: bool = True
+    runner_mode: bool = True
+    runner_activate_r: float = 2.0
+    runner_giveback_fraction: float = 0.35
+    runner_min_lock_r: float = 1.0
+    runner_exit_checks: int = 2
 
 
 NOW = datetime(2024, 3, 4, 15, 0, tzinfo=timezone.utc)
@@ -20,6 +25,11 @@ RISK_OFF = {"longs_allowed": False}
 
 def bars(price, count=30, volume=1000):
     return [{"o": price, "h": price, "l": price, "c": price, "v": volume} for _ in range(count)]
+
+
+def reversal_bars(level=10.4):
+    prices = [9.0] * 20 + [level] * 8 + [level - 0.1, level - 0.2]
+    return [{"o": p, "h": p, "l": p, "c": p, "v": 1000} for p in prices]
 
 
 def state(entry=10.0, high=10.0, first_seen=NOW, risk=None):
@@ -49,8 +59,37 @@ def test_a_recovering_bar_resets_the_failure_streak():
 def test_profit_protection_fires_after_giving_back_a_run():
     # Entry 10, fallback risk 1.5% = 0.15/share. High of 10.20 is +1.33R.
     position = state(high=10.20)
-    decision = evaluate_exit(position, 10.01, bars(9.5), RISK_ON, NOW, Cfg())
+    assert evaluate_exit(position, 10.01, reversal_bars(), RISK_ON, NOW, Cfg()) is None
+    decision = evaluate_exit(position, 10.01, reversal_bars(), RISK_ON, NOW, Cfg())
     assert decision.reason == "profit_protection"
+    assert decision.meta["reversal_checks"] == 2
+
+
+def test_profit_exit_streak_resets_when_price_structure_recovers():
+    position = state(high=10.20)
+    assert evaluate_exit(position, 10.01, reversal_bars(), RISK_ON, NOW, Cfg()) is None
+    rising = [{"o": p, "h": p, "l": p, "c": p, "v": 1000}
+              for p in ([9.0] * 20 + [10.0] * 8 + [10.1, 10.2])]
+    assert evaluate_exit(position, 10.01, rising, RISK_ON, NOW, Cfg()) is None
+    assert position.runner_fail_checks == 0
+
+
+def test_runner_lets_a_far_move_run_until_reversal_is_confirmed():
+    position = state(high=12.0, risk=0.50)  # Peak +4R, current still +2.2R.
+    falling = reversal_bars(level=11.5)
+    assert evaluate_exit(position, 11.10, falling, RISK_ON, NOW, Cfg()) is None
+    decision = evaluate_exit(position, 11.10, falling, RISK_ON, NOW, Cfg())
+    assert decision.reason == "runner_trailing_exit"
+    assert decision.meta["r_high"] == 4.0
+    assert decision.meta["r_now"] == 2.2
+
+
+def test_runner_does_not_exit_on_giveback_without_a_falling_close():
+    position = state(high=12.0, risk=0.50)
+    rising = [{"o": p, "h": p, "l": p, "c": p, "v": 1000}
+              for p in ([9.0] * 20 + [11.0] * 8 + [11.1, 11.2])]
+    assert evaluate_exit(position, 11.10, rising, RISK_ON, NOW, Cfg()) is None
+    assert position.runner_fail_checks == 0
 
 
 def test_no_profit_protection_before_the_run_happens():

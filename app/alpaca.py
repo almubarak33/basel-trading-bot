@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from datetime import datetime, timedelta, timezone
 import httpx
 from .config import settings
@@ -8,6 +9,10 @@ DATA = "https://data.alpaca.markets"
 PAPER = "https://paper-api.alpaca.markets"
 
 STOP_ORDER_TYPES = {"stop", "stop_limit", "trailing_stop"}
+
+
+def _chunks(items: list[str], size: int) -> list[list[str]]:
+    return [items[i:i+size] for i in range(0,len(items),size)]
 
 
 def extract_stop_prices(orders: list[dict]) -> dict[str, float]:
@@ -52,6 +57,9 @@ class Alpaca:
         if not symbols:return {}
         return await self._get(f"{DATA}/v2/stocks/snapshots",{"symbols":",".join(symbols)})
 
+    async def asset(self, symbol: str):
+        return await self._get(f"{PAPER}/v2/assets/{symbol.upper()}")
+
     async def latest_quotes(self,symbols:list[str]):
         if not symbols:return {}
         payload=await self._get(f"{DATA}/v2/stocks/quotes/latest",{"symbols":",".join(symbols)})
@@ -80,14 +88,41 @@ class Alpaca:
     async def intraday_bars(self,symbols:list[str],minutes:int=240):
         if not symbols:return {}
         start=datetime.now(timezone.utc)-timedelta(minutes=minutes)
-        payload=await self._get(f"{DATA}/v2/stocks/bars",{"symbols":",".join(symbols),"timeframe":"1Min","start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"})
-        return payload.get("bars",{})
+        params=lambda chunk:{"symbols":",".join(chunk),"timeframe":"1Min",
+            "start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"}
+        pages=await asyncio.gather(*[self._get(f"{DATA}/v2/stocks/bars",params(chunk))
+                                     for chunk in _chunks(symbols,25)])
+        out={}
+        for page in pages: out.update(page.get("bars",{}))
+        return out
 
     async def daily_bars(self,symbols:list[str],days:int=25):
         if not symbols:return {}
         start=datetime.now(timezone.utc)-timedelta(days=max(days*2,40))
-        payload=await self._get(f"{DATA}/v2/stocks/bars",{"symbols":",".join(symbols),"timeframe":"1Day","start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"})
-        return payload.get("bars",{})
+        params=lambda chunk:{"symbols":",".join(chunk),"timeframe":"1Day",
+            "start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"}
+        pages=await asyncio.gather(*[self._get(f"{DATA}/v2/stocks/bars",params(chunk))
+                                     for chunk in _chunks(symbols,100)])
+        out={}
+        for page in pages: out.update(page.get("bars",{}))
+        return out
+
+    async def chart_bars(self, symbol: str, timeframe: str, days: int):
+        start=datetime.now(timezone.utc)-timedelta(days=max(1,days))
+        payload=await self._get(f"{DATA}/v2/stocks/{symbol.upper()}/bars",{
+            "timeframe":timeframe,"start":start.isoformat().replace("+00:00","Z"),
+            "limit":10000,"adjustment":"all","sort":"asc",
+        })
+        return payload.get("bars",payload if isinstance(payload,list) else [])
+
+    async def corporate_actions(self, symbol: str, days: int = 730):
+        end=datetime.now(timezone.utc).date()
+        start=end-timedelta(days=max(1,days))
+        return await self._get(f"{DATA}/v1/corporate-actions",{
+            "symbols":symbol.upper(),"start":start.isoformat(),"end":end.isoformat(),
+            "types":"reverse_split,forward_split,cash_dividend,stock_dividend,name_change,worthless_removal",
+            "limit":1000,
+        })
 
     async def market_regime(self):
         bars=await self.intraday_bars(["SPY","QQQ"],minutes=180)

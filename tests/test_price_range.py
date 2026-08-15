@@ -30,8 +30,9 @@ def reject_codes(price):
 
 
 def test_the_default_range_spans_the_whole_market():
+    """A max of 0 is the no-cap convention, so anything priced above it passes."""
     assert settings.min_price <= 0.01
-    assert settings.max_price >= 1_000_000
+    assert settings.max_price == 0 or settings.max_price >= 1_000_000
 
 
 @pytest.mark.parametrize("price", [0.50, 5.0, 59.0, 420.0, 3500.0])

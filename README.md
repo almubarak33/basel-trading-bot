@@ -16,6 +16,43 @@ identical code: `strategy.py` (scoring and levels), `intelligence.py` (grading),
 ## Safety
 Paper only by default. `ENABLE_PAPER_ORDERS=false` prevents execution until explicitly enabled.
 
+## Aggressive scanner profile
+
+The default `AGGRESSIVE` profile discovers the top 50 percentage movers plus
+the top 100 most-active names, then analyzes up to 100 unique symbols every 30
+seconds. It has no upper price or daily-move cap: prices start at `$0.01`,
+discovery starts at `+1.5%`, and execution eligibility starts at `+3%`.
+
+Two entry structures are supported: a controlled pullback/reclaim and an
+early momentum breakout. In a weak broad market, standalone momentum remains
+visible and receives a market-regime caution instead of being silently
+discarded. Premarket and after-hours discovery runs from 04:00 to 20:00 New
+York time. Execution is narrower than discovery: the regular session plus
+after-hours until 20:00, never premarket — see below.
+
+Aggressive discovery does not remove execution protection. Orders remain Paper
+only, require confirmation on two consecutive scans, risk `0.5%` of equity per
+trade, cap a position at `20%` of equity, stop at four open positions, and halt
+after a `2%` daily loss by default. Sub-dollar order prices retain four decimal
+places.
+
+## Interactive stock chart
+
+Stock detail uses the vendored TradingView Lightweight Charts `5.2.0` build.
+Candles and volume support crosshair inspection, mouse/touch pan, wheel/pinch
+zoom, and one-day/five-day ranges. Completed daily closes appear below the
+chart and the most recent prior close is drawn as a reference line.
+
+## Runner exits
+
+The displayed `2R` level is a performance reference, not a take-profit order.
+Both automated and manual Paper entries submit an OTO order with a broker-native
+protective stop and no fixed upside cap. After a position expands, the manager
+tracks peak R and only takes runner profit after the configured giveback floor,
+a price below EMA9, a falling latest bar, and two consecutive checks. Hard
+stops, thesis failure, the daily risk guard, and end-of-day flattening remain
+independent protections.
+
 ## Extended session (after the bell)
 
 `TRADE_AFTER_HOURS=true` lets the bot work 16:00–20:00 ET as well as the
@@ -42,18 +79,12 @@ Liquidity after the bell is a fraction of the regular session and the screener
 endpoints may return stale or empty data outside it, so extended-hours entries
 may simply be rare.
 
-## Price range
-
-`MIN_PRICE`/`MAX_PRICE` default to 0.01 and 1,000,000 — effectively the whole
-market. The strategy's published backtest was measured on $2–$30 names; with the
-range open, `MAX_SPREAD_PCT` and `MIN_RVOL` are the only filters keeping illiquid
-symbols out. Narrow the two variables to restore the old behaviour.
 
 ## End of day
 
-Bracket legs are day orders, so a position that survives to the bell loses its
-stop and take-profit and carries into the next session's opening gap
-unprotected. Two rules prevent that:
+Protective stop legs are day orders, so a position that survives to the bell
+loses its stop and carries into the next session's opening gap unprotected. Two
+rules prevent that:
 
 - New entries stop `NO_ENTRY_MINUTES_BEFORE_CLOSE` (30) before the close.
 - Everything still open is flattened `EOD_FLATTEN_MINUTES_BEFORE_CLOSE` (10)

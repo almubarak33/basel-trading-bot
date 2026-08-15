@@ -16,7 +16,9 @@ LAST_ACTION = None
 
 
 def state():
-    tracked={s:{"entry":p.entry,"high":p.high,"fail_checks":p.fail_checks,"first_seen":p.first_seen.isoformat()} for s,p in TRACKED.items()}
+    tracked={s:{"entry":p.entry,"high":p.high,"fail_checks":p.fail_checks,
+                "runner_fail_checks":p.runner_fail_checks,"first_seen":p.first_seen.isoformat()}
+             for s,p in TRACKED.items()}
     return {"enabled": settings.auto_manage_positions,"last_run":LAST_RUN,"last_error":LAST_ERROR,
         "last_action":LAST_ACTION,"tracked":tracked,"soft_stops":soft_stops.snapshot()}
 

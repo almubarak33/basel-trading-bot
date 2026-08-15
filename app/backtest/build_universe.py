@@ -40,7 +40,8 @@ def qualifies(bars: list[dict], min_price: float, max_price: float,
         close, volume = num(bar.get("c")), num(bar.get("v"))
         if close <= 0 or volume <= 0:
             continue
-        if min_price <= close <= max_price and close * volume >= min_dollar_volume:
+        price_ok=close>=min_price and (max_price<=0 or close<=max_price)
+        if price_ok and close * volume >= min_dollar_volume:
             hits += 1
             if hits >= min_days:
                 return True

@@ -118,8 +118,9 @@ def test_the_extended_exit_crosses_the_spread():
     assert float(order["limit_price"]) == pytest.approx(99.5)
 
 
-def test_the_extended_exit_never_prices_below_a_penny():
-    assert float(build_extended_hours_exit("AAAA", 1, 0.01)["limit_price"]) == 0.01
+def test_a_sub_dollar_exit_keeps_four_decimals():
+    """Sub-dollar orders are quoted to 0.0001, so 0.5% off $0.30 must not round away."""
+    assert build_extended_hours_exit("AAAA", 1, 0.30)["limit_price"] == "0.2985"
 
 
 def test_extended_orders_get_unique_ids():

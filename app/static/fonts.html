@@ -4,10 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>اختيار الخط · بازل ترايدر</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Tajawal:wght@400;500;700;800&family=Cairo:wght@400;600;700;800&family=Almarai:wght@400;700;800&family=Readex+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+@font-face{
+  font-family:"The Year of Handicrafts";
+  src:url("/static/fonts/TheYearofHandicrafts-Regular.otf") format("opentype");
+  font-weight:400;
+  font-style:normal;
+  font-display:swap;
+}
+@font-face{
+  font-family:"The Year of Handicrafts";
+  src:url("/static/fonts/TheYearofHandicrafts-Medium.otf") format("opentype");
+  font-weight:500;
+  font-style:normal;
+  font-display:swap;
+}
+@font-face{
+  font-family:"The Year of Handicrafts";
+  src:url("/static/fonts/TheYearofHandicrafts-SemiBold.otf") format("opentype");
+  font-weight:600;
+  font-style:normal;
+  font-display:swap;
+}
+@font-face{
+  font-family:"The Year of Handicrafts";
+  src:url("/static/fonts/TheYearofHandicrafts-Bold.otf") format("opentype");
+  font-weight:700;
+  font-style:normal;
+  font-display:swap;
+}
+@font-face{
+  font-family:"The Year of Handicrafts";
+  src:url("/static/fonts/TheYearofHandicrafts-Black.otf") format("opentype");
+  font-weight:900;
+  font-style:normal;
+  font-display:swap;
+}
 :root{
   --bg1:#E8F6EF;--bg2:#F1EFFB;--bg3:#F7F6FD;--card:#fff;--card2:#FBFBFE;
   --ink:#101828;--ink2:#344054;--muted:#7A8699;--line:#EEF0F5;
@@ -18,7 +50,7 @@
 *{box-sizing:border-box}
 body{margin:0;padding:16px 14px 40px;background:linear-gradient(180deg,var(--bg1),var(--bg2) 42%,var(--bg3));
   background-attachment:fixed;color:var(--ink);font-size:15px;line-height:1.5;
-  font-family:"IBM Plex Sans Arabic",system-ui,sans-serif}
+  font-family:"The Year of Handicrafts",system-ui,sans-serif}
 .wrap{max-width:620px;margin:auto}
 .num{unicode-bidi:plaintext;font-variant-numeric:tabular-nums}
 .intro{background:var(--card);border-radius:22px;box-shadow:var(--sh);padding:16px;margin-bottom:18px}
@@ -45,11 +77,11 @@ h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
 .pick{background:var(--card2);border-radius:16px;padding:13px;margin-top:14px;font-size:12.5px;
   color:var(--ink2);line-height:1.8}
 .f0{font-family:-apple-system,"SF Arabic","Segoe UI",Tahoma,sans-serif}
-.f1{font-family:"IBM Plex Sans Arabic"}
-.f2{font-family:"Tajawal"}
-.f3{font-family:"Cairo"}
-.f4{font-family:"Almarai"}
-.f5{font-family:"Readex Pro"}
+.f1{font-family:"The Year of Handicrafts"}
+.f2{font-family:"The Year of Handicrafts";font-weight:500}
+.f3{font-family:"The Year of Handicrafts";font-weight:600}
+.f4{font-family:"The Year of Handicrafts";font-weight:700}
+.f5{font-family:"The Year of Handicrafts";font-weight:900}
 </style>
 </head>
 <body>
@@ -58,18 +90,18 @@ h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
     <h1>أي خط تريد؟</h1>
     <p>نفس بطاقة التطبيق بستة خطوط. تصفّح وقارنها بالتصميم الذي أعجبك،
        ثم أخبرني بالاسم وأطبّقه على التطبيق كاملاً.<br>
-       <b>الخط المطبَّق حالياً:</b> IBM Plex Sans Arabic</p>
+       <b>الخط المطبَّق حالياً:</b> The Year of Handicrafts</p>
   </div>
   <div id="out"></div>
 </div>
 
 <script>
 const FONTS = [
-  ["f1","IBM Plex Sans Arabic","المطبَّق حالياً"],
-  ["f2","Tajawal","هندسي · شائع في تطبيقات الخليج"],
-  ["f5","Readex Pro","حديث · مصمم للواجهات"],
-  ["f3","Cairo","كلاسيكي · واسع الانتشار"],
-  ["f4","Almarai","نظيف · عناوين قوية"],
+  ["f1","The Year of Handicrafts Regular","المطبَّق حالياً"],
+  ["f2","The Year of Handicrafts Medium","وزن متوسط"],
+  ["f3","The Year of Handicrafts SemiBold","وزن شبه عريض"],
+  ["f4","The Year of Handicrafts Bold","وزن عريض"],
+  ["f5","The Year of Handicrafts Black","وزن ثقيل"],
   ["f0","خط النظام","بلا خط خارجي"],
 ];
 
