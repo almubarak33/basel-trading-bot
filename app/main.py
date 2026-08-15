@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+from collections import Counter
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -24,6 +25,20 @@ app = FastAPI(title="Basel Trader Mobile", version="1.1.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 protected = [Depends(auth.require_auth)]
+
+
+def scanner_profile() -> dict:
+    return {
+        "profile":settings.trading_profile,"price_min":settings.min_price,
+        "price_max":settings.max_price if settings.max_price>0 else None,
+        "change_min_pct":settings.min_change_pct,
+        "execution_change_min_pct":settings.min_execution_change_pct,
+        "change_max_pct":settings.max_change_pct if settings.max_change_pct>0 else None,
+        "min_score":settings.min_score,"min_intel_score":settings.min_intel_score,
+        "min_rvol":settings.min_rvol,"universe_limit":settings.screener_universe_limit,
+        "movers_top":settings.movers_top,"actives_top":settings.actives_top,
+        "extended_hours":settings.scan_extended_hours,
+    }
 
 class OrderRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
@@ -52,13 +67,15 @@ async def status():
             "risk_per_trade_pct":settings.risk_per_trade*100,"max_daily_loss_pct":settings.max_daily_loss*100,
             "min_score":settings.min_score,"min_rvol":settings.min_rvol,"opening_delay_minutes":settings.opening_delay_minutes,
             "engine":engine.state(),"trade_manager":trade_manager.state(),
-            "risk_status":{"blocked":False,"drawdown_pct":0.0,"simulation":True}})
+            "risk_status":{"blocked":False,"drawdown_pct":0.0,"simulation":True},
+            "scanner_profile":scanner_profile()})
         return sim
     base={"mode":"PAPER" if settings.paper else "BLOCKED","orders_enabled":settings.enable_orders,"configured":True,
         "option_alpha_configured":bool(settings.option_alpha_webhook_url),"option_alpha_enabled":settings.option_alpha_enabled,
         "kill_switch":KILL_SWITCH,"risk_per_trade_pct":settings.risk_per_trade*100,
         "max_daily_loss_pct":settings.max_daily_loss*100,"min_score":settings.min_score,"min_rvol":settings.min_rvol,
-        "opening_delay_minutes":settings.opening_delay_minutes,"engine":engine.state(),"trade_manager":trade_manager.state()}
+        "opening_delay_minutes":settings.opening_delay_minutes,"engine":engine.state(),"trade_manager":trade_manager.state(),
+        "scanner_profile":scanner_profile()}
     try:
         account=await alpaca.account(); clock=await alpaca.clock(); risk=await alpaca.risk_status(); regime=await alpaca.market_regime()
         base.update({"equity":float(account.get("equity",0)),"buying_power":float(account.get("buying_power",0)),
@@ -75,9 +92,14 @@ async def pro_dashboard():
         enriched=[enrich_candidate(r) for r in rows]
         enriched.sort(key=lambda r:(r.get("decision",{}).get("action")=="ARM",r.get("intel_score",0)),reverse=True)
         portfolio=await dashboard_portfolio(simulation=is_sim)
+        actions=Counter((r.get("decision") or {}).get("action","UNKNOWN") for r in enriched)
+        rejects=Counter(item.get("code","unknown") for r in enriched for item in (r.get("reject_codes") or []))
+        diagnostics={"discovered":len(enriched),"actions":dict(actions),
+            "top_rejections":dict(rejects.most_common(8)),"profile":scanner_profile()}
         return {"simulation":is_sim,"status":s,"portfolio":portfolio,"market_brief":market_brief(s),
             "radar":enriched,"top_signal":enriched[0] if enriched else None,
             "events":recent_events(30),
+            "scanner_diagnostics":diagnostics,
             "modules":{"smart_radar":True,"smart_map":True,"risk_engine":True,"market_regime":True,
                 "catalyst_feed":True,"microstructure":True,"strategy_selector":True,"insider_sec":False,
                 "paper_execution":alpaca.configured(),"autonomous_entry":True,"autonomous_exit":True}}

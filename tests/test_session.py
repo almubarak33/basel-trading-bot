@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.session import NY, opening_delay_active, session_fraction
+from app.session import NY, extended_scan_active, opening_delay_active, session_fraction
 
 
 def at(hour, minute):
@@ -27,3 +27,10 @@ def test_opening_delay_covers_only_the_first_minutes():
     assert opening_delay_active(at(9, 35), 10) is True
     assert opening_delay_active(at(9, 40), 10) is False
     assert opening_delay_active(at(9, 29), 10) is False
+
+
+def test_extended_discovery_covers_pre_and_post_market():
+    assert extended_scan_active(at(6, 0)) is True
+    assert extended_scan_active(at(18, 0)) is True
+    assert extended_scan_active(at(3, 59)) is False
+    assert extended_scan_active(at(20, 0)) is False

@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 NY = ZoneInfo("America/New_York")
 MARKET_OPEN = time(9, 30)
 MARKET_CLOSE = time(16, 0)
+EXTENDED_OPEN = time(4, 0)
+EXTENDED_CLOSE = time(20, 0)
 MIN_SESSION_FRACTION = 0.05
 
 
@@ -33,6 +35,12 @@ def opening_delay_active(now: datetime, minutes: int) -> bool:
     now = now.astimezone(NY)
     open_dt, _ = session_bounds(now)
     return open_dt <= now < open_dt + timedelta(minutes=minutes)
+
+
+def extended_scan_active(now: datetime) -> bool:
+    """Premarket and after-hours discovery window; execution stays regular-hours only."""
+    now = now.astimezone(NY)
+    return now.weekday() < 5 and EXTENDED_OPEN <= now.time() < EXTENDED_CLOSE
 
 
 def minutes_until_close(now: datetime) -> float:

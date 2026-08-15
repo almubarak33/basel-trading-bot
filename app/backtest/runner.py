@@ -90,9 +90,11 @@ def _prefilter(symbols: list[str], change_map: dict[str, float], ctx: _DayContex
     kept = []
     for symbol in symbols:
         price = ctx.price_at(symbol, moment)
-        if price is None or not (cfg_settings.min_price <= price <= cfg_settings.max_price): continue
+        if price is None or price < cfg_settings.min_price: continue
+        if cfg_settings.max_price > 0 and price > cfg_settings.max_price: continue
         change = change_map.get(symbol, 0.0)
-        if not (cfg_settings.min_change_pct <= change <= cfg_settings.max_change_pct): continue
+        if change < cfg_settings.min_change_pct: continue
+        if cfg_settings.max_change_pct > 0 and change > cfg_settings.max_change_pct: continue
         kept.append(symbol)
     return kept
 

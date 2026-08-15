@@ -7,10 +7,11 @@ from datetime import date
 
 from .. import scanner as scanner_module
 from .. import strategy as strategy_module
+from .. import intelligence as intelligence_module
 from ..config import Settings, settings as live_settings
 
 # Modules that bound `settings` at import time and must be patched for a sweep.
-_SETTINGS_CONSUMERS = (strategy_module, scanner_module)
+_SETTINGS_CONSUMERS = (strategy_module, scanner_module, intelligence_module)
 
 
 @dataclass

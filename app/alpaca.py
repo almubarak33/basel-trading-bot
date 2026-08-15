@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from datetime import datetime, timedelta, timezone
 import httpx
 from .config import settings
@@ -8,6 +9,10 @@ DATA = "https://data.alpaca.markets"
 PAPER = "https://paper-api.alpaca.markets"
 
 STOP_ORDER_TYPES = {"stop", "stop_limit", "trailing_stop"}
+
+
+def _chunks(items: list[str], size: int) -> list[list[str]]:
+    return [items[i:i+size] for i in range(0,len(items),size)]
 
 
 def extract_stop_prices(orders: list[dict]) -> dict[str, float]:
@@ -80,14 +85,24 @@ class Alpaca:
     async def intraday_bars(self,symbols:list[str],minutes:int=240):
         if not symbols:return {}
         start=datetime.now(timezone.utc)-timedelta(minutes=minutes)
-        payload=await self._get(f"{DATA}/v2/stocks/bars",{"symbols":",".join(symbols),"timeframe":"1Min","start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"})
-        return payload.get("bars",{})
+        params=lambda chunk:{"symbols":",".join(chunk),"timeframe":"1Min",
+            "start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"}
+        pages=await asyncio.gather(*[self._get(f"{DATA}/v2/stocks/bars",params(chunk))
+                                     for chunk in _chunks(symbols,25)])
+        out={}
+        for page in pages: out.update(page.get("bars",{}))
+        return out
 
     async def daily_bars(self,symbols:list[str],days:int=25):
         if not symbols:return {}
         start=datetime.now(timezone.utc)-timedelta(days=max(days*2,40))
-        payload=await self._get(f"{DATA}/v2/stocks/bars",{"symbols":",".join(symbols),"timeframe":"1Day","start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"})
-        return payload.get("bars",{})
+        params=lambda chunk:{"symbols":",".join(chunk),"timeframe":"1Day",
+            "start":start.isoformat().replace("+00:00","Z"),"limit":10000,"adjustment":"raw"}
+        pages=await asyncio.gather(*[self._get(f"{DATA}/v2/stocks/bars",params(chunk))
+                                     for chunk in _chunks(symbols,100)])
+        out={}
+        for page in pages: out.update(page.get("bars",{}))
+        return out
 
     async def market_regime(self):
         bars=await self.intraday_bars(["SPY","QQQ"],minutes=180)

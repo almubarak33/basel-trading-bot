@@ -115,9 +115,30 @@ def test_market_brief_emits_a_known_code(healthy, expected):
     assert brief["text"] == render(expected)
 
 
-def test_scanner_regime_block_code_is_known():
+def test_conservative_scanner_blocks_a_risk_off_candidate(monkeypatch):
+    import dataclasses
+    from app import scanner
     from app.scanner import assemble_candidates
+    eligible = dataclasses.replace(candidate_row(), eligible=True, reject_reasons=[], reject_codes=[])
+    monkeypatch.setattr(scanner, "settings", dataclasses.replace(scanner.settings, trading_profile="CONSERVATIVE"))
+    monkeypatch.setattr(scanner, "build_candidate", lambda *args, **kwargs: eligible)
     rows = assemble_candidates(["AAAA"], {"AAAA": 8.0}, {"AAAA": 1}, {}, {}, {},
                                {"longs_allowed": False}, 0.5)
-    for item in rows[0]["reject_codes"]:
-        assert item["code"] in MESSAGES
+    assert rows[0]["eligible"] is False
+    assert {item["code"] for item in rows[0]["reject_codes"]} == {"regime_block"}
+    assert "regime_block" in MESSAGES
+
+
+def test_aggressive_scanner_keeps_a_risk_off_candidate_visible(monkeypatch):
+    import dataclasses
+    from app import scanner
+    from app.scanner import assemble_candidates
+    eligible = dataclasses.replace(candidate_row(), eligible=True, reject_reasons=[], reject_codes=[])
+    monkeypatch.setattr(scanner, "settings", dataclasses.replace(scanner.settings, trading_profile="AGGRESSIVE"))
+    monkeypatch.setattr(scanner, "build_candidate", lambda *args, **kwargs: eligible)
+    rows = assemble_candidates(["AAAA"], {"AAAA": 8.0}, {"AAAA": 1}, {}, {}, {},
+                               {"longs_allowed": False,
+                                "details": {"SPY": {"price": 500, "healthy": False},
+                                            "QQQ": {"price": 450, "healthy": False}}}, 0.5)
+    assert rows[0]["eligible"] is True
+    assert rows[0]["market_regime_caution"] is True

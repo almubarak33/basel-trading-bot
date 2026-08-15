@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 
+from .config import settings
 from .messages import MessageList, render
 
 
@@ -22,6 +23,7 @@ def enrich_candidate(row: dict) -> dict:
     spread = float(x.get("spread_pct") or 999)
     change = float(x.get("change_pct") or 0)
     risk = float(x.get("risk_pct") or 0)
+    breakout = bool(x.get("breakout_confirmed"))
 
     technical = 0
     technical += 25 if price > vwap > 0 else 0
@@ -29,6 +31,8 @@ def enrich_candidate(row: dict) -> dict:
     technical += 20 if x.get("pullback_seen") else 0
     technical += 20 if x.get("reclaim_confirmed") else 0
     technical += 15 if x.get("volume_confirmed") else 0
+    technical += 20 if breakout else 0
+    technical = min(100, technical)
 
     liquidity = 0
     liquidity += min(55, rvol * 8)
@@ -42,7 +46,7 @@ def enrich_candidate(row: dict) -> dict:
     elif ext > 1.5: timing -= 18
     if onebar > 2.5: timing -= 35
     elif onebar > 1.5: timing -= 15
-    if not x.get("pullback_seen"): timing -= 25
+    if not x.get("pullback_seen") and not breakout: timing -= 25
     timing = max(0, timing)
 
     risk_quality = max(0, min(100, 100 - max(0, risk - 1.0) * 18))
@@ -72,20 +76,22 @@ def enrich_candidate(row: dict) -> dict:
     if change > 25: bearish.add("large_move")
     if spread > .45: bearish.add("wide_spread")
     if rvol < 2: bearish.add("weak_rvol")
-    if not x.get("pullback_seen"): bearish.add("no_clean_pullback")
-    if not x.get("reclaim_confirmed"): bearish.add("reclaim_missing")
+    if x.get("market_regime_caution"): bearish.add("regime_caution")
+    if not x.get("pullback_seen") and not breakout: bearish.add("no_clean_pullback")
+    if not x.get("reclaim_confirmed") and not breakout: bearish.add("reclaim_missing")
 
     x["bull_case"] = bullish.texts()
     x["bear_case"] = bearish.texts()
     x["bull_codes"] = bullish.codes
     x["bear_codes"] = bearish.codes
-    if x.get("eligible") and composite >= 85:
+    if x.get("eligible") and composite >= settings.min_intel_score:
         action="ARM"; thesis_code="thesis_arm"
     elif composite >= 75:
         action="WATCH"; thesis_code="thesis_watch"
     else:
         action="AVOID"; thesis_code="thesis_avoid"
-    x["decision"]={"action":action,"thesis":render(thesis_code),"thesis_code":thesis_code,"confidence":x["grade"]}
+    x["decision"]={"action":action,"thesis":render(thesis_code),"thesis_code":thesis_code,
+                   "confidence":x["grade"],"profile":settings.trading_profile}
 
     # Preserve verified/diagnostic catalyst data supplied by the live scanner.
     # Historical backtests intentionally keep it unavailable until historical

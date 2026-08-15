@@ -60,7 +60,8 @@ def test_no_trade_opens_during_the_opening_delay(store):
     result = run_backtest(store, config())
     for t in result.trades:
         local = t.entry_time.astimezone(NY)
-        assert (local.hour, local.minute) >= (9, 40)
+        minutes_after_open=(local.hour*60+local.minute)-(9*60+30)
+        assert minutes_after_open >= live_settings.opening_delay_minutes
 
 
 def test_open_positions_never_exceed_the_configured_cap(store):
@@ -84,10 +85,10 @@ def test_position_size_respects_the_risk_budget(store):
 
 
 def test_position_size_is_capped_by_notional_exposure(store):
-    """The 15%-of-equity cap binds before the risk budget on tight stops."""
+    """The configured equity cap binds before the risk budget on tight stops."""
     result = run_backtest(store, config())
     for t in result.trades:
-        assert t.entry_price * t.qty <= 20_000 * 0.15 * 1.1
+        assert t.entry_price * t.qty <= 20_000 * live_settings.max_position_notional_pct * 1.1
 
 
 def test_every_trade_has_a_positive_reward_to_risk_target(store):
@@ -135,18 +136,25 @@ def test_override_context_manager_restores_on_error():
     assert strategy_module.settings is original
 
 
-def test_true_initial_risk_changes_manager_behaviour(store):
-    """The live 1.5% risk assumption materially misprices R against the real stop.
+def test_true_initial_risk_reaches_the_manager(store, monkeypatch):
+    """The backtest manager must measure R from the submitted structural stop."""
+    from app.backtest import runner as runner_module
 
-    Feeding the manager the true entry risk changes which exits fire, which is the
-    whole reason the assumption is worth removing.
-    """
-    faithful = run_backtest(store, config(use_true_initial_risk=False))
-    corrected = run_backtest(store, config(use_true_initial_risk=True))
-    assert sorted(t.reason for t in faithful.trades) != sorted(t.reason for t in corrected.trades)
-    # The mispriced R triggers protective exits at the wrong distance from entry.
-    assert sum(t.reason == "stop_loss" for t in faithful.trades) > \
-           sum(t.reason == "stop_loss" for t in corrected.trades)
+    observed = {"legacy": [], "corrected": []}
+    mode = "legacy"
+
+    def capture(state, *_args, **_kwargs):
+        observed[mode].append((state.entry, state.risk_per_share()))
+        return None
+
+    monkeypatch.setattr(runner_module, "evaluate_exit", capture)
+    run_backtest(store, config(use_true_initial_risk=False))
+    mode = "corrected"
+    run_backtest(store, config(use_true_initial_risk=True))
+
+    assert observed["legacy"] and observed["corrected"]
+    assert all(risk == pytest.approx(entry * 0.015) for entry, risk in observed["legacy"])
+    assert any(risk != pytest.approx(entry * 0.015) for entry, risk in observed["corrected"])
 
 
 def test_flatten_at_close_can_be_disabled(store):

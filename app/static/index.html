@@ -467,10 +467,10 @@ body{
           <button class="btn ghost compact" onclick="go('settingsPage')">إدارة النظام</button>
         </div>
         <div class="pro-band">
-          <span class="badge ok">تأكيد ثنائي</span>
-          <span class="badge info">أوامر حماية</span>
-          <span class="badge warn">حد خسارة يومي</span>
-          <span class="badge mute">تنفيذ تجريبي أولاً</span>
+          <span class="badge hot" id="scannerProfile">مغامر</span>
+          <span class="badge info" id="priceScope">كل الأسعار</span>
+          <span class="badge ok" id="universeScope">100 سهم</span>
+          <span class="badge mute" id="sessionScope">رصد ممتد</span>
         </div>
       </div>
 
@@ -641,6 +641,10 @@ body{
         <span class="chip">اتجاه السوق العام</span>
         <span class="chip">تأكيد ثنائي قبل الدخول</span>
       </div>
+      <div class="divide" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="row"><span class="sub">آخر دورة اكتشاف</span><b class="num" id="scanCycleSummary">—</b></div>
+        <div><div class="sub" style="margin-bottom:7px">أكثر أسباب الاستبعاد</div><div class="chips" id="rejectSummary" style="margin:0"></div></div>
+      </div>
     </div>
     <div class="tabs" id="radarTabs">
       <button class="on" onclick="filterRadar('all',this)">الكل</button>
@@ -763,6 +767,14 @@ body{
         <div class="control-row"><div class="control-copy"><b>حد جودة الدخول</b><span>أقل تقييم يسمح بتسليح الإشارة</span></div><b class="num" id="settingsMinScore">—</b></div>
       </div>
 
+      <div class="panel">
+        <div class="panel-title"><h3>نطاق الرادار</h3><span class="badge hot" id="settingsProfile">—</span></div>
+        <div class="control-row"><div class="control-copy"><b>الأسعار</b><span>نطاق الاكتشاف، لا حجم المركز</span></div><b class="num" id="settingsPriceScope">—</b></div>
+        <div class="control-row"><div class="control-copy"><b>قائمة الفحص</b><span>الأكثر حركة والأكثر تداولاً</span></div><b class="num" id="settingsUniverse">—</b></div>
+        <div class="control-row"><div class="control-copy"><b>بداية الرصد / التنفيذ</b><span>الرصد مبكر، والتنفيذ يحتاج زخماً أعلى</span></div><b class="num" id="settingsMinChange">—</b></div>
+        <div class="control-row"><div class="control-copy"><b>خارج الجلسة</b><span>رصد فقط، دون تنفيذ آلي</span></div><b id="settingsExtended">—</b></div>
+      </div>
+
       <div class="panel danger-zone">
         <div class="panel-title"><h3>الحماية الطارئة</h3><span class="badge hot" id="killBadge">—</span></div>
         <p class="sub">الإيقاف الطارئ يعطّل المحرك، ويلغي الدخول الجديد، ويحاول إغلاق المراكز التجريبية المفتوحة.</p>
@@ -838,14 +850,16 @@ const tcs=list=>(list||[]).map(tc);
 function rvolBadge(v){ v=Number(v)||0;
   if(v>=5) return ['hot','استثنائي']; if(v>=3) return ['ok','قوي'];
   if(v>=2) return ['info','جيد']; return ['mute','ضعيف']; }
-function spreadBadge(v){ v=Number(v)||99;
-  if(v<=0.20) return ['ok','ضيق']; if(v<=0.45) return ['info','مقبول']; return ['hot','واسع']; }
+function spreadBadge(v,price){ v=Number(v)||99; price=Number(price)||0;
+  const tight=price<1 ? .8 : (price<5 ? .35 : .20), allowed=price<1 ? 3 : (price<5 ? 1.5 : .65);
+  if(v<=tight) return ['ok','ضيق']; if(v<=allowed) return ['info','مقبول']; return ['hot','واسع']; }
 function riskBadge(v){ v=Number(v)||0;
   if(v<=1.5) return ['ok','منخفض']; if(v<=3) return ['info','متوسط']; return ['hot','مرتفع']; }
 function scoreBadge(v){ v=Number(v)||0;
   if(v>=85) return ['ok','ممتاز']; if(v>=75) return ['info','جيد'];
   if(v>=65) return ['warn','متوسط']; return ['mute','ضعيف']; }
 const B=([k,t])=>`<span class="badge ${k}">${t}</span>`;
+const setupName=s=>s==='MOMENTUM_BREAKOUT'?'اختراق زخم':s==='PULLBACK_RECLAIM'?'تصحيح واستعادة':'انتظار';
 
 function gauge(value,label,color){
   const v=Math.max(0,Math.min(100,Number(value)||0)), R=38, C=2*Math.PI*R;
@@ -980,7 +994,7 @@ function signalCard(c){
       <div><div class="label">الدرجة</div><b class="num">${esc(ltr(c.grade||'—'))}</b></div>
     </div>
     <div class="chips" style="margin-top:10px">
-      ${B(rvolBadge(c.rvol))}${B(spreadBadge(c.spread_pct))}${B(riskBadge(c.risk_pct))}
+      <span class="badge info">${setupName(c.setup)}</span>${B(rvolBadge(c.rvol))}${B(spreadBadge(c.spread_pct,c.price))}${B(riskBadge(c.risk_pct))}
     </div>
     <div class="bars">${bars}</div>
     <div class="sub" style="margin-top:12px;line-height:1.65">${esc(tcode((c.decision||{}).thesis_code))}</div>
@@ -991,6 +1005,7 @@ function signalCard(c){
 function render(d){
   DATA=d;
   const st=d.status||{}, brief=d.market_brief||{}, reg=brief.regime||{}, pf=(d.portfolio||{}).summary||{};
+  const diag=d.scanner_diagnostics||{}, profile=st.scanner_profile||diag.profile||{};
 
   /* الترويسة */
   const h=new Date().getHours();
@@ -1001,7 +1016,7 @@ function render(d){
   $('mktDot').style.color=st.market_open?'var(--up)':'var(--faint)';
   /* لماذا لا يتداول: البوابات كانت تخرج بصمت، فيبدو الانتظار والعطل سواء */
   const eng=st.engine||{}, why=eng.idle_reason||'starting';
-  const good=new Set(['working','awaiting_confirmation']);
+  const good=new Set(['working','awaiting_confirmation','extended_hours_watch']);
   const wait=new Set(['market_closed','opening_delay','entry_window_closed','no_arm_candidates','starting']);
   $('engineState').textContent=tcode('idle_'+why)||why;
   const engineClass=good.has(why)?'ok':wait.has(why)?'warn':'hot';
@@ -1014,7 +1029,8 @@ function render(d){
     orders_disabled:'اضبط ENABLE_PAPER_ORDERS=true للسماح بإرسال الأوامر.',
     daily_loss_guard:'توقّف اليوم بعد بلوغ حد الخسارة. يُستأنف في الجلسة القادمة.',
     entry_window_closed:'يتوقف الدخول قبل الإغلاق بـ 30 دقيقة لتفادي مركز يبيت بلا وقف.',
-    no_arm_candidates:'الفلاتر صارمة عمداً: يلزم تقييم 85+ وتأكيد على مسحين متتاليين.',
+    no_arm_candidates:`تم فحص ${diag.discovered??eng.last_scan_count??0} سهماً، لكن لا يوجد مرشح بلغ ${profile.min_intel_score??st.min_score??72} مع التأكيد الثاني. راجع أسباب الاستبعاد في الرادار.`,
+    extended_hours_watch:'الرادار يعمل الآن خارج الجلسة. يعرض المرشحين فوراً، بينما التنفيذ الآلي ينتظر افتتاح السوق الرسمي.',
     error:eng.last_error||''};
   const hint=hints[why];
   $('engineHint').textContent=hint||''; $('engineHint').hidden=!hint;
@@ -1035,6 +1051,17 @@ function render(d){
   $('settingsRiskTrade').textContent=st.risk_per_trade_pct!=null?nf(st.risk_per_trade_pct,2)+'%':'—';
   $('settingsDailyLoss').textContent=st.max_daily_loss_pct!=null?nf(st.max_daily_loss_pct,2)+'%':'—';
   $('settingsMinScore').textContent=st.min_score!=null?nf(st.min_score,0):'—';
+  $('settingsProfile').textContent=profile.profile||'AGGRESSIVE';
+  $('settingsPriceScope').textContent=profile.price_max==null
+    ? `${money(profile.price_min||.01)} فأعلى`:`${money(profile.price_min)} – ${money(profile.price_max)}`;
+  $('settingsUniverse').textContent=(profile.universe_limit||'—')+' سهم';
+  $('settingsMinChange').textContent=profile.change_min_pct!=null
+    ? `${pct(profile.change_min_pct,1)} / ${pct(profile.execution_change_min_pct??profile.change_min_pct,1)}`:'—';
+  $('settingsExtended').innerHTML=profile.extended_hours?'<span class="up">مفعّل</span>':'<span class="muted">معطّل</span>';
+  $('scannerProfile').textContent=profile.profile==='AGGRESSIVE'?'نمط مغامر':(profile.profile||'النمط');
+  $('priceScope').textContent=profile.price_max==null?'كل الأسعار':'نطاق سعري';
+  $('universeScope').textContent=(profile.universe_limit||'—')+' سهم';
+  $('sessionScope').textContent=profile.extended_hours?'رصد ممتد':'الجلسة الرسمية';
   $('killBadge').className='badge '+(st.kill_switch?'hot':'ok');
   $('killBadge').textContent=st.kill_switch?'مفعّل':'الحماية جاهزة';
 
@@ -1067,6 +1094,11 @@ function render(d){
   $('radarReady').textContent=arms.length;
   $('radarWatch').textContent=watches.length;
   $('radarAvoid').textContent=avoids.length;
+  $('scanCycleSummary').textContent=`${diag.discovered??radar.length} مكتشف · ${arms.length} دخول · ${watches.length} مراقبة`;
+  const rejects=Object.entries(diag.top_rejections||{}).slice(0,5);
+  $('rejectSummary').innerHTML=rejects.length?rejects.map(([code,n])=>
+    `<span class="chip">${esc(tc({code}))} <b class="num">${n}</b></span>`).join(''):
+    '<span class="badge ok">لا توجد استبعادات</span>';
   $('topSym').textContent=(radar[0]||{}).symbol||'—';
   $('avgIntel').textContent=radar.length?nf(radar.reduce((s,r)=>s+(r.intel_score||0),0)/radar.length,0):'—';
   const gr={};(radar).forEach(r=>{gr[r.grade||'?']=(gr[r.grade||'?']||0)+1});
@@ -1279,7 +1311,7 @@ function renderStock(){
     <div class="card" style="background:linear-gradient(145deg,var(--brand-soft),var(--card) 72%);border-color:color-mix(in srgb,var(--brand) 24%,var(--line))">
       <div class="row">
         <div><div class="sym num" style="font-size:22px">${esc(s.symbol||'')}</div>
-          <div class="sub">${esc((c.setup||'').replaceAll('_',' '))}</div></div>
+          <div class="sub">${setupName(c.setup)}</div></div>
         <div style="text-align:start">
           <div class="val num" style="font-size:26px">${money(c.price)}</div>
           <div class="sub num ${cls(c.change_pct)}">${pct(c.change_pct,2)}</div></div>
@@ -1288,7 +1320,7 @@ function renderStock(){
         <span class="badge ${act==='ARM'?'ok':act==='AVOID'?'hot':'warn'}">
           ${act==='ARM'?'دخول':act==='AVOID'?'تجنّب':'مراقبة'}</span>
         <span class="badge info num">${esc(ltr(c.grade||'—'))}</span>
-        ${B(rvolBadge(c.rvol))}${B(spreadBadge(c.spread_pct))}
+        ${B(rvolBadge(c.rvol))}${B(spreadBadge(c.spread_pct,c.price))}
       </div>
       <div class="trio">
         <div><div class="label">سعر الدخول</div><div class="val sm num">${money(c.entry)}</div></div>
@@ -1339,7 +1371,7 @@ function renderStock(){
         <div class="cell"><div class="label">الحجم النسبي</div>
           <div class="val sm num">${ltr(nf(c.rvol,1)+'×')}</div>${B(rvolBadge(c.rvol))}</div>
         <div class="cell"><div class="label">فرق السعر</div>
-          <div class="val sm num">${nf(c.spread_pct,2)}%</div>${B(spreadBadge(c.spread_pct))}</div>
+          <div class="val sm num">${nf(c.spread_pct,2)}%</div>${B(spreadBadge(c.spread_pct,c.price))}</div>
         <div class="cell"><div class="label">VWAP</div>
           <div class="val sm num">${money(c.vwap)}</div>
           <div class="lv-note num">امتداد ${pct(c.vwap_extension_pct,2)}</div></div>

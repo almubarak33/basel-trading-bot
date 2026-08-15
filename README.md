@@ -16,6 +16,25 @@ identical code: `strategy.py` (scoring and levels), `intelligence.py` (grading),
 ## Safety
 Paper only by default. `ENABLE_PAPER_ORDERS=false` prevents execution until explicitly enabled.
 
+## Aggressive scanner profile
+
+The default `AGGRESSIVE` profile discovers the top 50 percentage movers plus
+the top 100 most-active names, then analyzes up to 100 unique symbols every 30
+seconds. It has no upper price or daily-move cap: prices start at `$0.01`,
+discovery starts at `+1.5%`, and execution eligibility starts at `+3%`.
+
+Two entry structures are supported: a controlled pullback/reclaim and an
+early momentum breakout. In a weak broad market, standalone momentum remains
+visible and receives a market-regime caution instead of being silently
+discarded. Premarket and after-hours discovery runs from 04:00 to 20:00 New
+York time, but automated orders still wait for the regular session.
+
+Aggressive discovery does not remove execution protection. Orders remain Paper
+only, require confirmation on two consecutive scans, risk `0.5%` of equity per
+trade, cap a position at `20%` of equity, stop at four open positions, and halt
+after a `2%` daily loss by default. Sub-dollar order prices retain four decimal
+places.
+
 ## End of day
 
 Bracket legs are day orders, so a position that survives to the bell loses its

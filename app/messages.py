@@ -18,6 +18,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     "pullback_detected": {"en": "Controlled pullback detected", "ar": "تصحيح سعري منضبط"},
     "reclaim_confirmed": {"en": "VWAP + EMA reclaim confirmed", "ar": "تأكيد استعادة VWAP والمتوسطات"},
     "volume_confirmed": {"en": "Reclaim volume confirmed", "ar": "تأكيد حجم التداول عند الاستعادة"},
+    "momentum_breakout": {"en": "Momentum breakout confirmed", "ar": "تأكيد اختراق زخم مبكر"},
     "rvol": {"en": "RVOL {value}", "ar": "الحجم النسبي {value}"},
     "vwap_extension": {"en": "VWAP extension only {value}", "ar": "الامتداد عن VWAP {value} فقط"},
     "spread": {"en": "Spread {value}", "ar": "فرق السعر {value}"},
@@ -26,6 +27,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     "insufficient_history": {"en": "Insufficient intraday history", "ar": "سجل تداول يومي غير كافٍ"},
     "price_out_of_range": {"en": "Price outside allowed range", "ar": "السعر خارج النطاق المسموح"},
     "move_out_of_range": {"en": "Move too weak or already overextended", "ar": "الحركة ضعيفة أو ممتدة أكثر من اللازم"},
+    "entry_momentum_too_low": {"en": "Detected early; waiting for execution momentum", "ar": "رُصد مبكراً؛ بانتظار زخم التنفيذ"},
     "spread_too_wide": {"en": "Spread too wide", "ar": "فرق السعر واسع جداً"},
     "rvol_too_low": {"en": "RVOL below minimum", "ar": "الحجم النسبي أقل من الحد الأدنى"},
     "vwap_extended": {"en": "FOMO block: too far above VWAP", "ar": "حظر الاندفاع: بعيد جداً فوق VWAP"},
@@ -51,6 +53,10 @@ MESSAGES: dict[str, dict[str, str]] = {
     "large_move": {"en": "Large day move; reversal risk elevated", "ar": "حركة يومية كبيرة؛ مخاطر الانعكاس مرتفعة"},
     "wide_spread": {"en": "Wide spread", "ar": "فرق سعر واسع"},
     "weak_rvol": {"en": "Weak relative volume", "ar": "حجم نسبي ضعيف"},
+    "regime_caution": {
+        "en": "Broad market is weak; standalone momentum requires extra caution",
+        "ar": "السوق العام ضعيف؛ الزخم الفردي يحتاج حذراً إضافياً",
+    },
     "no_clean_pullback": {"en": "No clean pullback yet", "ar": "لا يوجد تصحيح واضح بعد"},
     "reclaim_missing": {"en": "Reclaim not confirmed", "ar": "الاستعادة غير مؤكدة"},
 
@@ -78,8 +84,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ar": "تأكيد السوق العام متباين؛ اشترط جودة دخول أعلى.",
     },
     "brief_risk_off": {
-        "en": "Broad market is not supportive; new long entries should be blocked or rare.",
-        "ar": "السوق العام غير داعم؛ يجب حظر عمليات الشراء الجديدة أو تقليلها.",
+        "en": "Broad market is not supportive; aggressive entries require exceptional standalone momentum.",
+        "ar": "السوق العام غير داعم؛ الدخول المغامر يتطلب زخماً فردياً استثنائياً.",
     },
 
     # ---- data-source stubs ----------------------------------------------
@@ -153,6 +159,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     "idle_live_blocked": {"en": "Live trading is blocked", "ar": "التداول الحقيقي محظور"},
     "idle_not_configured": {"en": "Broker keys are not configured", "ar": "مفاتيح الوسيط غير مضبوطة"},
     "idle_market_closed": {"en": "Market is closed", "ar": "السوق مغلق"},
+    "idle_extended_hours_watch": {"en": "Scanning extended hours; entries wait for the regular session", "ar": "يرصد خارج الجلسة؛ التنفيذ ينتظر السوق الرسمي"},
     "idle_daily_loss_guard": {"en": "Daily loss limit reached", "ar": "بلغ حد الخسارة اليومي"},
     "idle_opening_delay": {"en": "Waiting out the opening minutes", "ar": "انتظار دقائق الافتتاح"},
     "idle_entry_window_closed": {"en": "Too close to the bell for a new entry", "ar": "قرب الإغلاق — لا دخول جديد"},

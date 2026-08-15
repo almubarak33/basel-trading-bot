@@ -68,6 +68,13 @@ def test_prices_are_rounded_to_cents_as_strings():
     assert payload["take_profit"]["limit_price"] == "11.02"
 
 
+def test_sub_dollar_prices_keep_four_decimal_precision():
+    payload = order(entry=0.45678, stop=0.43219, target=0.50555)
+    assert payload["limit_price"] == "0.4568"
+    assert payload["stop_loss"]["stop_price"] == "0.4322"
+    assert payload["take_profit"]["limit_price"] == "0.5056"
+
+
 def test_both_protective_legs_are_attached():
     payload = order()
     assert payload["take_profit"]["limit_price"] == "11.0"
