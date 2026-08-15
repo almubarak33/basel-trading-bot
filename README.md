@@ -16,6 +16,39 @@ identical code: `strategy.py` (scoring and levels), `intelligence.py` (grading),
 ## Safety
 Paper only by default. `ENABLE_PAPER_ORDERS=false` prevents execution until explicitly enabled.
 
+## Extended session (after the bell)
+
+`TRADE_AFTER_HOURS=true` lets the bot work 16:00–20:00 ET as well as the
+regular session. `TRADE_PRE_MARKET` stays off, so nothing trades before 09:30.
+
+This is not the regular session with longer hours. The broker accepts **only
+plain limit day/gtc orders** outside 09:30–16:00 — bracket and OTO classes are
+rejected, market orders are rejected, and so is `DELETE /v2/positions`. Three
+consequences follow:
+
+- An after-hours entry carries **no stop at the broker**. `soft_stops.py` holds
+  the intended stop and the trade manager sells when price reaches it. That
+  protection exists only while the process is running: a crash, a redeploy or a
+  dropped connection leaves the position naked until the bot comes back.
+- A regular-session position held past 16:00 loses its stop leg the same way —
+  it is a day order. The manager copies every working broker stop into the same
+  registry while the session is open, so the software stop takes over at the
+  bell rather than the position going unguarded.
+- Every extended-hours exit is a limit order priced `EXTENDED_MARKETABLE_PCT`
+  (0.5%) through the last price, because after-hours spreads are wide and a
+  passive limit would sit unfilled.
+
+Liquidity after the bell is a fraction of the regular session and the screener
+endpoints may return stale or empty data outside it, so extended-hours entries
+may simply be rare.
+
+## Price range
+
+`MIN_PRICE`/`MAX_PRICE` default to 0.01 and 1,000,000 — effectively the whole
+market. The strategy's published backtest was measured on $2–$30 names; with the
+range open, `MAX_SPREAD_PCT` and `MIN_RVOL` are the only filters keeping illiquid
+symbols out. Narrow the two variables to restore the old behaviour.
+
 ## End of day
 
 Bracket legs are day orders, so a position that survives to the bell loses its
@@ -30,6 +63,12 @@ Both are measured against Alpaca's `next_close`, not a hardcoded 16:00, so
 early-close days — when the market shuts at 13:00 — flatten correctly rather
 than never triggering. The entry cutoff must stay at or above the flatten
 window, otherwise the bot opens trades it is about to close.
+
+With `TRADE_AFTER_HOURS=true` the day ends four hours later: the cutoff moves to
+19:30 and the flatten to 19:50. A half-day still works out — a 13:00 bell means
+a 17:00 extended close — because the four hours are added to the broker's own
+`next_close` rather than to a fixed clock time. Once past 16:00 that field
+already points at tomorrow, so the extended close is computed locally instead.
 
 `EOD_FLATTEN_ENABLED=false` accepts overnight exposure with no protective
 orders attached.

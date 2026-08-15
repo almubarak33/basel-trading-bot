@@ -266,6 +266,7 @@ button{font-family:inherit;border:0;cursor:pointer;color:inherit}
         <span class="badge" id="engineState">—</span>
       </div>
       <div class="sub" id="engineHint" style="margin-top:8px" hidden></div>
+      <div class="sub" id="extWarn" style="margin-top:8px;color:var(--warn)" hidden></div>
     </div>
 
     <div class="grid2" style="margin-top:12px">
@@ -612,8 +613,11 @@ function render(d){
   const h=new Date().getHours();
   $('greet').textContent=(h<12?'صباح الخير':h<18?'مساء الخير':'مساء الخير')+' · ذكاء تداول آلي';
   $('modeTag').textContent=d.simulation?'محاكاة':'تجريبي مباشر';
-  $('marketState').textContent=st.market_open?'السوق مفتوح':'السوق مغلق';
-  $('mktDot').style.background=st.market_open?'var(--up)':'var(--faint)';
+  /* الجلسة الممتدة ليست "مغلقاً": البوت يتداول بعد الجرس */
+  const PHASES={regular:'السوق مفتوح',after_hours:'ما بعد الإغلاق',pre_market:'ما قبل الافتتاح',closed:'السوق مغلق'};
+  const phase=st.session_phase||(st.market_open?'regular':'closed');
+  $('marketState').textContent=PHASES[phase]||PHASES.closed;
+  $('mktDot').style.background=st.trading_now?(st.market_open?'var(--up)':'var(--warn)'):'var(--faint)';
   /* لماذا لا يتداول: البوابات كانت تخرج بصمت، فيبدو الانتظار والعطل سواء */
   const eng=st.engine||{}, why=eng.idle_reason||'starting';
   const good=new Set(['working','awaiting_confirmation']);
@@ -625,15 +629,21 @@ function render(d){
     auto_disabled:'التداول التلقائي مُطفأ — فعّله من الإعدادات أو أعد ضبط AUTO_PAPER_TRADING.',
     orders_disabled:'اضبط ENABLE_PAPER_ORDERS=true للسماح بإرسال الأوامر.',
     daily_loss_guard:'توقّف اليوم بعد بلوغ حد الخسارة. يُستأنف في الجلسة القادمة.',
-    entry_window_closed:'يتوقف الدخول قبل الإغلاق بـ 30 دقيقة لتفادي مركز يبيت بلا وقف.',
+    entry_window_closed:'يتوقف الدخول قبل نهاية اليوم بـ 30 دقيقة لتفادي مركز يبيت بلا وقف.',
+    market_closed:'التداول يعمل 09:30–20:00 نيويورك. ما قبل الافتتاح مُطفأ عمداً.',
     no_arm_candidates:'الفلاتر صارمة عمداً: يلزم تقييم 85+ وتأكيد على مسحين متتاليين.',
     error:eng.last_error||''};
   const hint=hints[why];
   $('engineHint').textContent=hint||''; $('engineHint').hidden=!hint;
+  /* خارج الجلسة الرسمية لا يقبل الوسيط وقفاً مرفقاً، فالحماية برمجية ولا تعمل إن توقف البوت */
+  const extended=st.trading_now&&!st.market_open;
+  $('extWarn').textContent=extended?'⚠ جلسة ممتدة: الوقف يطبّقه البوت برمجياً لا الوسيط. إن توقف البوت يبقى المركز بلا حماية.':'';
+  $('extWarn').hidden=!extended;
 
-  $('nextClose').textContent=st.next_close
-    ? 'الإغلاق القادم · '+new Date(st.next_close).toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit'})
-    : (st.market_open?'الجلسة جارية':'خارج ساعات التداول');
+  /* بعد الجرس يشير next_close من الوسيط إلى الغد، والحد الفعلي هو 20:00 بتوقيت نيويورك */
+  $('nextClose').textContent=phase==='after_hours'?'نهاية الجلسة الممتدة · 20:00 نيويورك'
+    :st.next_close?'الإغلاق القادم · '+new Date(st.next_close).toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit'})
+    :(st.trading_now?'الجلسة جارية':'خارج ساعات التداول');
 
   /* رأس المال */
   $('equity').textContent=money(st.equity);
@@ -695,8 +705,8 @@ function render(d){
   $('pulseIdx').textContent=healthy+' / 2';
   $('pulseLongs').innerHTML=reg.longs_allowed?'<span class="up">مسموح</span>':'<span class="down">محظور</span>';
   $('briefText').textContent=tcode(brief.text_code)||brief.text||'';
-  $('liveTag').className='badge '+(st.market_open?'ok':'mute');
-  $('liveTag').textContent=st.market_open?'● مباشر':'● مغلق';
+  $('liveTag').className='badge '+(st.market_open?'ok':st.trading_now?'warn':'mute');
+  $('liveTag').textContent=st.market_open?'● مباشر':st.trading_now?'● جلسة ممتدة':'● مغلق';
 
   const det=reg.details||{};
   $('pulseHow').innerHTML=['SPY','QQQ'].map(s=>{

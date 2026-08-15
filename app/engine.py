@@ -6,9 +6,10 @@ from .alpaca import alpaca
 from .arming import ArmingTracker
 from .config import settings
 from .db import log_event
-from .orders import build_runner_order
+from .orders import build_extended_hours_entry, build_runner_order
 from .scanner import scan
-from .session import NY, minutes_until, opening_delay_active
+from .session import NY, minutes_until_day_end, opening_delay_active, tradeable_now
+from . import soft_stops
 from .strategy import position_size
 from .intelligence import enrich_candidate
 AUTO_ENABLED = settings.auto_paper_trading
@@ -39,9 +40,14 @@ def state():
 def _opening_delay_active() -> bool:
     return opening_delay_active(datetime.now(NY), settings.opening_delay_minutes)
 
-def _entry_window_closed(clock: dict) -> bool:
-    minutes_left=minutes_until(clock.get("next_close"))
+def _entry_window_closed(clock: dict, now: datetime | None = None) -> bool:
+    minutes_left=minutes_until_day_end(clock.get("next_close"),settings.trade_after_hours,now)
     return False if minutes_left is None else minutes_left <= settings.no_entry_minutes_before_close
+
+def _session_open(clock: dict, now: datetime | None = None) -> bool:
+    """Whether the bot may trade right now, regular or extended session."""
+    return tradeable_now(now or datetime.now(NY),bool(clock.get("is_open",False)),
+        settings.trade_after_hours,settings.trade_pre_market)
 
 def _cooldown_active(symbol: str) -> bool:
     until=COOLDOWNS.get(symbol)
@@ -59,8 +65,9 @@ async def auto_loop():
             elif not alpaca.configured(): IDLE_REASON="not_configured"
             if AUTO_ENABLED and settings.paper and alpaca.configured():
                 clock=await alpaca.clock()
-                if not clock.get("is_open",False): IDLE_REASON="market_closed"
-                if clock.get("is_open",False):
+                open_now=_session_open(clock)
+                if not open_now: IDLE_REASON="market_closed"
+                if open_now:
                     LAST_RISK_STATUS=await alpaca.risk_status()
                     if LAST_RISK_STATUS.get("blocked"):
                         IDLE_REASON="daily_loss_guard"
@@ -99,7 +106,10 @@ async def maybe_place_paper_order(candidate: dict):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"intel_decision_not_arm"})); return
     if _opening_delay_active():
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"opening_delay"})); return
-    if _entry_window_closed(await alpaca.clock()):
+    clock=await alpaca.clock()
+    if not _session_open(clock):
+        log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"session_closed"})); return
+    if _entry_window_closed(clock):
         log_event("order_blocked",candidate.get("symbol"),json.dumps({"reason":"entry_window_closed"})); return
     risk_status=await alpaca.risk_status()
     if risk_status.get("blocked"):
@@ -117,10 +127,16 @@ async def maybe_place_paper_order(candidate: dict):
         log_event("order_blocked",symbol,json.dumps({"reason":"stop_too_wide","risk_pct":risk_pct})); return
     account=await alpaca.account(); equity=float(account.get("equity",settings.paper_equity)); qty=position_size(equity,entry,stop)
     if qty<1:return
-    payload=build_runner_order(symbol,qty,entry,stop,source="intel")
+    # خارج الجلسة الرسمية لا يقبل الوسيط أمراً مرفقاً بوقف، فالدخول أمر limit
+    # بسيط والوقف يُسجَّل ليطبّقه مدير الصفقات برمجياً.
+    extended=not bool(clock.get("is_open",False))
+    payload=(build_extended_hours_entry(symbol,qty,entry,source="intel") if extended
+             else build_runner_order(symbol,qty,entry,stop,source="intel"))
     result=await alpaca.submit_order(payload)
+    soft_stops.remember(symbol,stop)
     COOLDOWNS[symbol]=datetime.now(timezone.utc)+timedelta(minutes=settings.symbol_cooldown_minutes)
     log_event("smart_paper_order",symbol,json.dumps({"order":result,"setup":candidate.get("setup"),
         "score":candidate.get("score"),"intel_score":candidate.get("intel_score"),"grade":candidate.get("grade"),
         "rvol":candidate.get("rvol"),"entry":entry,"stop":stop,"target_reference":candidate.get("target"),
-        "runner_mode":True,"risk_pct":round(risk_pct,2)}))
+        "runner_mode":True,"risk_pct":round(risk_pct,2),
+        "extended_hours":extended,"stop_enforced_by":"software" if extended else "broker"}))

@@ -9,6 +9,10 @@ from zoneinfo import ZoneInfo
 NY = ZoneInfo("America/New_York")
 MARKET_OPEN = time(9, 30)
 MARKET_CLOSE = time(16, 0)
+# جلسات ممتدة: ما قبل الافتتاح وما بعد الإغلاق
+PRE_MARKET_OPEN = time(4, 0)
+AFTER_HOURS_CLOSE = time(20, 0)
+AFTER_HOURS_MINUTES = 240  # 16:00 → 20:00
 MIN_SESSION_FRACTION = 0.05
 
 
@@ -63,3 +67,58 @@ def minutes_until(timestamp: str | None, now: datetime | None = None) -> float |
         moment = moment.replace(tzinfo=NY)
     reference = now or datetime.now(NY)
     return (moment - reference).total_seconds() / 60
+
+
+def in_regular_session(now: datetime) -> bool:
+    local = now.astimezone(NY).time()
+    return MARKET_OPEN <= local < MARKET_CLOSE
+
+
+def in_after_hours(now: datetime) -> bool:
+    local = now.astimezone(NY).time()
+    return MARKET_CLOSE <= local < AFTER_HOURS_CLOSE
+
+
+def in_pre_market(now: datetime) -> bool:
+    local = now.astimezone(NY).time()
+    return PRE_MARKET_OPEN <= local < MARKET_OPEN
+
+
+def tradeable_now(now: datetime, market_open: bool, after_hours: bool, pre_market: bool) -> bool:
+    """Whether the bot may work right now.
+
+    `market_open` comes from the broker clock so holidays and half-days are the
+    broker's calendar, not ours. The extended windows are only consulted on a
+    day the market actually traded.
+    """
+    if market_open:
+        return True
+    if after_hours and in_after_hours(now):
+        return True
+    if pre_market and in_pre_market(now):
+        return True
+    return False
+
+
+def session_end(now: datetime, after_hours: bool) -> datetime:
+    """When the current trading day stops — the bell, or the extended close."""
+    day = now.astimezone(NY).date()
+    return datetime.combine(day, AFTER_HOURS_CLOSE if after_hours else MARKET_CLOSE, tzinfo=NY)
+
+
+def minutes_until_day_end(next_close: str | None, after_hours: bool,
+                          now: datetime | None = None) -> float | None:
+    """Minutes left in the bot's trading day, extended session included.
+
+    Before the bell the broker's `next_close` is the anchor, so half-days stay
+    correct: a 13:00 close plus four extended hours ends the day at 17:00. Once
+    past 16:00 that same field already points at tomorrow's bell, so the local
+    extended close is the only boundary that means anything.
+    """
+    now = (now or datetime.now(NY)).astimezone(NY)
+    if after_hours and in_after_hours(now):
+        return (session_end(now, True) - now).total_seconds() / 60
+    minutes = minutes_until(next_close, now)
+    if minutes is None:
+        return None
+    return minutes + (AFTER_HOURS_MINUTES if after_hours else 0)

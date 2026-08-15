@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import trade_manager
+from app import soft_stops, trade_manager
 from app.alpaca import extract_stop_prices
 from app.exits import PositionState
 
@@ -77,8 +77,9 @@ class FakeAlpaca:
 def manager(monkeypatch):
     """Run manage_once against a fake broker with orders enabled."""
     trade_manager.TRACKED.clear()
+    soft_stops.clear()
     enabled = dataclasses.replace(trade_manager.settings, paper=True, enable_orders=True,
-                                  auto_manage_positions=True)
+                                  auto_manage_positions=True, trade_after_hours=False)
     monkeypatch.setattr(trade_manager, "settings", enabled)
     monkeypatch.setattr(trade_manager, "log_event", lambda *a, **k: None)
     return trade_manager

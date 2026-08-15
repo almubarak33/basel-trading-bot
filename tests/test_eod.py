@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import engine, trade_manager
+from app import engine, soft_stops, trade_manager
 from app.session import NY, minutes_until, minutes_until_close
 
 UTC_NOW = datetime(2024, 3, 4, 18, 0, tzinfo=timezone.utc)
@@ -70,9 +70,10 @@ class FakeAlpaca:
 @pytest.fixture
 def manager(monkeypatch):
     trade_manager.TRACKED.clear()
+    soft_stops.clear()
     monkeypatch.setattr(trade_manager, "settings", dataclasses.replace(
         trade_manager.settings, paper=True, enable_orders=True, auto_manage_positions=True,
-        eod_flatten_enabled=True, eod_flatten_minutes=10))
+        eod_flatten_enabled=True, eod_flatten_minutes=10, trade_after_hours=False))
     monkeypatch.setattr(trade_manager, "log_event", lambda *a, **k: None)
     return trade_manager
 
@@ -136,7 +137,7 @@ def clock_with(minutes_to_close):
 @pytest.fixture
 def entry_settings(monkeypatch):
     monkeypatch.setattr(engine, "settings", dataclasses.replace(
-        engine.settings, no_entry_minutes_before_close=30))
+        engine.settings, no_entry_minutes_before_close=30, trade_after_hours=False))
 
 
 def test_entries_are_blocked_near_the_close(entry_settings):

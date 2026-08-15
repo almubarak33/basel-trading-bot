@@ -27,8 +27,9 @@ class Settings:
     max_daily_loss: float = float(os.getenv("MAX_DAILY_LOSS", "0.015"))
     max_open_positions: int = int(os.getenv("MAX_OPEN_POSITIONS", "2"))
 
-    min_price: float = float(os.getenv("MIN_PRICE", "2"))
-    max_price: float = float(os.getenv("MAX_PRICE", "30"))
+    # نطاق مفتوح: فلترا السبريد والحجم النسبي هما الحارس الفعلي الآن
+    min_price: float = float(os.getenv("MIN_PRICE", "0.01"))
+    max_price: float = float(os.getenv("MAX_PRICE", "1000000"))
     min_change_pct: float = float(os.getenv("MIN_CHANGE_PCT", "4"))
     max_change_pct: float = float(os.getenv("MAX_CHANGE_PCT", "35"))
     min_score: float = float(os.getenv("MIN_SCORE", "85"))
@@ -67,6 +68,11 @@ class Settings:
 
     # End of day. Stop legs are day orders in the current PAPER implementation,
     # so anything still open near the bell is flattened intentionally.
+    # جلسات ممتدة. الوسيط لا يقبل أوامر مرفقة بوقف خارج الجلسة الرسمية،
+    # فالوقف يصبح برمجياً — ولا يحمي إن توقف البوت.
+    trade_after_hours: bool = as_bool("TRADE_AFTER_HOURS", True)
+    trade_pre_market: bool = as_bool("TRADE_PRE_MARKET", False)
+
     eod_flatten_enabled: bool = as_bool("EOD_FLATTEN_ENABLED", True)
     eod_flatten_minutes: int = int(os.getenv("EOD_FLATTEN_MINUTES_BEFORE_CLOSE", "10"))
     no_entry_minutes_before_close: int = int(os.getenv("NO_ENTRY_MINUTES_BEFORE_CLOSE", "30"))

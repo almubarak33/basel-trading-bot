@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+from datetime import datetime
 from pathlib import Path
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -19,11 +20,20 @@ from .optionalpha import trigger_webhook
 from .intelligence import enrich_candidate, market_brief
 from .messages import DEFAULT_LANGUAGE, LANGUAGES, MESSAGES
 from .portfolio import dashboard_portfolio
+from .session import NY, in_after_hours, in_pre_market, tradeable_now
 
 app = FastAPI(title="Basel Trader Mobile", version="1.1.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 KILL_SWITCH = False
 protected = [Depends(auth.require_auth)]
+
+
+def session_phase(market_open: bool, now) -> str:
+    """Which window the clock is in, so the UI can say more than open/closed."""
+    if market_open: return "regular"
+    if in_after_hours(now): return "after_hours"
+    if in_pre_market(now): return "pre_market"
+    return "closed"
 
 class OrderRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
@@ -61,8 +71,12 @@ async def status():
         "opening_delay_minutes":settings.opening_delay_minutes,"engine":engine.state(),"trade_manager":trade_manager.state()}
     try:
         account=await alpaca.account(); clock=await alpaca.clock(); risk=await alpaca.risk_status(); regime=await alpaca.market_regime()
+        market_open=bool(clock.get("is_open",False)); now=datetime.now(NY)
         base.update({"equity":float(account.get("equity",0)),"buying_power":float(account.get("buying_power",0)),
-            "market_open":bool(clock.get("is_open",False)),"next_open":clock.get("next_open"),"next_close":clock.get("next_close"),
+            "market_open":market_open,"next_open":clock.get("next_open"),"next_close":clock.get("next_close"),
+            "session_phase":session_phase(market_open,now),
+            "trading_now":tradeable_now(now,market_open,settings.trade_after_hours,settings.trade_pre_market),
+            "trade_after_hours":settings.trade_after_hours,"trade_pre_market":settings.trade_pre_market,
             "risk_status":risk,"market_regime":regime})
     except Exception as e: base["broker_error"]=str(e)
     return base
