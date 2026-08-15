@@ -12,7 +12,19 @@ def num(v, default: float = 0.0) -> float:
 
 
 def ema(values: list[float], length: int) -> float:
-    if not values: return 0.0
+    """Exponential moving average, or 0.0 when there is not enough history.
+
+    The series is seeded from its first value, so a window shorter than `length`
+    is mostly seed rather than average: EMA20 over 8 rising bars sits far below
+    the price, which makes `price > ema20` true by construction and turns every
+    trend filter built on it into a no-op. Refusing to answer is the honest
+    result, and callers already treat 0.0 as unknown by requiring `ema > 0`.
+
+    Even at exactly `length` values the seed still carries roughly a tenth of the
+    weight; it decays to a few percent by two periods. Callers wanting a settled
+    average should pass more than the bare minimum.
+    """
+    if len(values) < length: return 0.0
     k = 2 / (length + 1); result = values[0]
     for v in values[1:]: result = v * k + result * (1-k)
     return result

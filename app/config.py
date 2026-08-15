@@ -56,7 +56,9 @@ class Settings:
     max_vwap_extension_pct: float = float(os.getenv("MAX_VWAP_EXTENSION_PCT", "4.5"))
     max_ema20_extension_pct: float = float(os.getenv("MAX_EMA20_EXTENSION_PCT", "6.0"))
     max_one_bar_move_pct: float = float(os.getenv("MAX_ONE_BAR_MOVE_PCT", "5.0"))
-    min_bars: int = int(os.getenv("MIN_INTRADAY_BARS", "8"))
+    # EMA20 needs at least its own period of bars to mean anything. Below that
+    # the trend filters pass on a seeding artefact rather than on the trend.
+    min_bars: int = int(os.getenv("MIN_INTRADAY_BARS", "25"))
     min_stop_pct: float = float(os.getenv("MIN_STOP_PCT", "0.8"))
     max_stop_pct: float = float(os.getenv("MAX_STOP_PCT", "7.5"))
     # Kept as an informational 2R reference on the UI/backtest reports. Runner
