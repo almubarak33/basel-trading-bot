@@ -26,7 +26,10 @@ class Settings:
     # drawdown 3.60% vs 6.51%, Sharpe 2.79 vs 1.99, Calmar 9.01 vs 4.31.
     trading_profile: str = os.getenv("TRADING_PROFILE", "STANDARD").upper()
     scan_interval_seconds: int = int(os.getenv("SCAN_INTERVAL_SECONDS", "30"))
-    scan_extended_hours: bool = as_bool("SCAN_EXTENDED_HOURS", True)
+    # Product requirement: the automatic scanner must remain active throughout
+    # every US equity trading window (premarket, regular, after-hours). Keep this
+    # hard-enabled so a stale hosting env var cannot silently force regular-only.
+    scan_extended_hours: bool = True
 
     option_alpha_webhook_url: str = os.getenv("OPTION_ALPHA_WEBHOOK_URL", "")
     option_alpha_enabled: bool = as_bool("OPTION_ALPHA_ENABLED", False)
@@ -121,10 +124,11 @@ class Settings:
 
     # Extended sessions are controlled in New York market time, so DST is
     # handled automatically by ZoneInfo("America/New_York") in app/session.py.
-    # Alpaca only accepts plain extended-hours limit orders outside 09:30-16:00;
-    # the bot therefore enforces protective stops in software in those windows.
-    trade_after_hours: bool = as_bool("TRADE_AFTER_HOURS", True)
-    trade_pre_market: bool = as_bool("TRADE_PRE_MARKET", True)
+    # Product requirement: execution is allowed in all supported US equity
+    # trading windows. Hard-enable both flags so hosting env drift cannot
+    # accidentally disable premarket or after-hours.
+    trade_after_hours: bool = True
+    trade_pre_market: bool = True
 
     eod_flatten_enabled: bool = as_bool("EOD_FLATTEN_ENABLED", True)
     eod_flatten_minutes: int = int(os.getenv("EOD_FLATTEN_MINUTES_BEFORE_CLOSE", "10"))
