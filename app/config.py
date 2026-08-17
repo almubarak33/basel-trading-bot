@@ -119,12 +119,12 @@ class Settings:
     flatten_unprotected_positions: bool = as_bool("FLATTEN_UNPROTECTED_POSITIONS", True)
     unprotected_position_grace_checks: int = int(os.getenv("UNPROTECTED_POSITION_GRACE_CHECKS", "3"))
 
-    # End of day. Stop legs are day orders in the current PAPER implementation,
-    # so anything still open near the bell is flattened intentionally.
-    # جلسات ممتدة. الوسيط لا يقبل أوامر مرفقة بوقف خارج الجلسة الرسمية،
-    # فالوقف يصبح برمجياً — ولا يحمي إن توقف البوت.
+    # Extended sessions are controlled in New York market time, so DST is
+    # handled automatically by ZoneInfo("America/New_York") in app/session.py.
+    # Alpaca only accepts plain extended-hours limit orders outside 09:30-16:00;
+    # the bot therefore enforces protective stops in software in those windows.
     trade_after_hours: bool = as_bool("TRADE_AFTER_HOURS", True)
-    trade_pre_market: bool = as_bool("TRADE_PRE_MARKET", False)
+    trade_pre_market: bool = as_bool("TRADE_PRE_MARKET", True)
 
     eod_flatten_enabled: bool = as_bool("EOD_FLATTEN_ENABLED", True)
     eod_flatten_minutes: int = int(os.getenv("EOD_FLATTEN_MINUTES_BEFORE_CLOSE", "10"))
